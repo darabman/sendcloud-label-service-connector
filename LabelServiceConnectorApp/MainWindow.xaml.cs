@@ -13,7 +13,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 
-namespace LabelServiceConnectorApp
+namespace LabelServiceConnector
 {
     /// <summary>
     /// Interaction logic for MainWindow.xaml
