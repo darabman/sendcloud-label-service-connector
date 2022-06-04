@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Configuration;
-using System.Data;
-using System.Linq;
-using System.Threading.Tasks;
-using System.Windows;
+﻿using System.Windows;
+using Microsoft.Extensions.Logging;
 
 namespace LabelServiceConnector
 {
@@ -13,5 +8,21 @@ namespace LabelServiceConnector
     /// </summary>
     public partial class App : Application
     {
+        public App()
+        {
+            _logger = ConfigureLogger().CreateLogger("");
+        }
+
+        private void Application_Startup(object sender, StartupEventArgs e)
+        {
+            _logger.LogInformation(ResourceAssembly.GetName().Name + " started" );
+        }
+
+        protected override void OnExit(ExitEventArgs e)
+        {
+            _logger.LogInformation(ResourceAssembly.GetName().Name + " exited");
+
+            base.OnExit(e);
+        }
     }
 }

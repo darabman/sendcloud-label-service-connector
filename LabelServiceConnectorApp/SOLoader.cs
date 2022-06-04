@@ -10,7 +10,9 @@ namespace LabelServiceConnector
 {
     public static class SOLoader
     {
-        public static List<Models.ShippingOrder> ScanDirectory(string path, ILogger logger)
+        public static event EventHandler<Models.ShippingOrder>? ShippingOrderAvailable;
+
+        public static void ScanDirectory(string path, ILogger logger)
         {
             var dir = new DirectoryInfo(path);
             var shippingOrders = new List<Models.ShippingOrder>();
@@ -29,15 +31,13 @@ namespace LabelServiceConnector
                         so.Fields = ParseCSV(fileText.ReadToEnd());
                     }
 
-                    shippingOrders.Add(so);
+                    ShippingOrderAvailable?.Invoke(null, so);
                 }
                 catch
                 {
                     logger.LogWarning($"Unable to process '{file.Name}', skipping..");
                 }
             }
-
-            return shippingOrders;
         }
 
         private static Dictionary<string, string> ParseCSV(string text)
