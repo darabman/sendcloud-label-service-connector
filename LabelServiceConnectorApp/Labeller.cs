@@ -17,16 +17,16 @@ namespace LabelServiceConnector
         {
             _cancel = cancel;
             _logger = logger;
-            _serviceTask = new Task(LabelProcess);
+            _serviceTask = Task.CompletedTask;
 
             JobQueue.JobAdded += Run;
         }
 
         public void Run(object? sender, EventArgs e)
         {
-            if (_serviceTask.IsCompleted || _serviceTask.Status == TaskStatus.Created)
+            if (_serviceTask.IsCompleted)
             {
-                _serviceTask.Start();
+                _serviceTask = Task.Run(LabelProcess);
             }
         }
 
@@ -37,7 +37,7 @@ namespace LabelServiceConnector
                 var job = JobQueue.Next();
 
                 if (job == null)
-                    throw new NullReferenceException();
+                    break;
 
                 var id = job.ShippingOrder.Id;
 

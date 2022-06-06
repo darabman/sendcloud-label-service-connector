@@ -40,6 +40,7 @@ namespace LabelServiceConnector
             return LoggerFactory.Create(builder =>
             {
                 var config = new LoggerConfiguration()
+                .MinimumLevel.Debug()
                 .WriteTo.Debug()
                 .WriteTo.File("logs/lsca-.log", rollingInterval: RollingInterval.Day);
 
