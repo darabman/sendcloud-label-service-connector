@@ -15,13 +15,13 @@ namespace LabelServiceConnector.Models
             LoadedTime = DateTime.Now;
         }
 
-        public string? Id { get; private set; }
+        public string Id => FileInformation.Name;
 
-        public Dictionary<string, string> Fields { get; set; }
+        public Dictionary<string, string>? Fields { get; set; }
 
         public string? TrackingNumber { get; set; }
 
-        public FileInfo FileInformation { get; private set; }
+        public FileInfo FileInformation { get; }
 
         public DateTime LoadedTime { get; private set; }
     }
