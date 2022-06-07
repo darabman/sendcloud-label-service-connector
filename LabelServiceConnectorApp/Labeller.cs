@@ -37,11 +37,14 @@ namespace LabelServiceConnector
                 var job = JobQueue.Next();
 
                 if (job == null)
+                {
+                    _logger.LogWarning("Job queue returned null");                    
                     break;
+                }
 
                 var id = job.ShippingOrder.Id;
 
-                _logger.LogDebug($"So there's this job... '{id}'");
+                _logger.LogInformation($"Processing job '{id}'");
                 Thread.Sleep(2500);
 
                 _logger.LogDebug($"Now I'm Sending it to the printer... '{id}'");

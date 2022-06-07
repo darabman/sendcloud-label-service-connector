@@ -27,11 +27,11 @@ namespace LabelServiceConnector
         {
             new Task(() =>
             {
-                int delayMs = 1000;
+                int delayMs = int.Parse(Configuration.App["CsvScanRateMs"] ?? "1000");
 
                 while (!_cancel.IsCancellationRequested)
                 {
-                    ScanDirectory("./");
+                    ScanDirectory(Configuration.App["CsvInputDir"] ?? "./");
                     Thread.Sleep(delayMs);
                 }
 
@@ -44,7 +44,8 @@ namespace LabelServiceConnector
             var shippingOrders = new List<ShippingOrder>();
             var files = dir.GetFiles("*.csv").OrderBy(f => f.CreationTime);
 
-            _logger.LogInformation($"Found {files.Count()} CSV files in '{path}'");
+            if (files.Any())
+                _logger.LogInformation($"Found {files.Count()} CSV files in '{path}'");
 
             foreach (var file in files)
             {
@@ -61,19 +62,23 @@ namespace LabelServiceConnector
 
                     JobQueue.AddJob(so);
                 }
-                catch
+                catch (Exception ex)
                 {
                     _logger.LogWarning($"Unable to process '{file.Name}', skipping..");
+                    _logger.LogDebug($"{ex}: {ex.Message}");
                 }
             }
         }
 
         private Dictionary<string, string> ParseCSV(string text)
         {
-            var rows = text.Split('\n');
+            var rowSep = Configuration.App["CsvRowSeparator"] ?? "\n";
+            var fieldSep = Configuration.App["CsvFieldSeparator"] ?? ";";
 
-            var header = rows[0].Split(';');
-            var values = rows[1].Split(';');
+            var rows = text.Split(rowSep);
+            
+            var header = rows[0].Split(fieldSep);
+            var values = rows[1].Split(fieldSep);
 
             var kv = new Dictionary<string, string>();
 

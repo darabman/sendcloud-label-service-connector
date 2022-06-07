@@ -12,7 +12,6 @@ namespace LabelServiceConnector
     {
         public static event EventHandler? JobAdded;
 
-
         private static ConcurrentQueue<Job> _queue = new ConcurrentQueue<Job>();
 
         public static bool JobReady => _queue.Count > 0;
@@ -26,10 +25,8 @@ namespace LabelServiceConnector
 
         public static Job? Next()
         {
-            Job? j;
-            
-            _queue.TryDequeue(out j);
-            
+            _queue.TryDequeue(out Job? j);
+
             return j;
         }
     }
