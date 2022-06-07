@@ -20,9 +20,13 @@ namespace LabelServiceConnector
             _cancellationToken = new CancellationToken();
         }
 
-        private void Application_Startup(object sender, StartupEventArgs e)
+        protected override void OnStartup(StartupEventArgs e)
         {
-            _logger.LogInformation(ResourceAssembly.GetName().Name + " started" );
+            base.OnStartup(e);
+
+            _logger.LogInformation(ResourceAssembly.GetName().Name + " started");
+
+            var notify = new System.Windows.Forms.NotifyIcon();
 
             new Loader(_logger, _cancellationToken).Run();
             new Labeller(_logger, _cancellationToken);
@@ -40,11 +44,9 @@ namespace LabelServiceConnector
             return LoggerFactory.Create(builder =>
             {
                 var config = new LoggerConfiguration()
-                .MinimumLevel.Debug()
-                .WriteTo.Debug()
-                .WriteTo.File("logs/lsca-.log", rollingInterval: RollingInterval.Day);
-
-                builder.AddSerilog(config.CreateLogger());
+                .ReadFrom.Configuration(Configuration.Logging);
+                
+                builder.AddSerilog(config.CreateLogger(), dispose: true);
             });
         }
     }

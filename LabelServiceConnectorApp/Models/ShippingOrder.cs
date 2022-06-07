@@ -15,7 +15,7 @@ namespace LabelServiceConnector.Models
             LoadedTime = DateTime.Now;
         }
 
-        public string Id => FileInformation.Name;
+        public string Id => FileInformation.Name.Split('.')[0];
 
         public Dictionary<string, string>? Fields { get; set; }
 
