@@ -12,7 +12,7 @@ namespace LabelServiceConnector.Models
 
         public DateTime Touched { get; private set; }
 
-        public JobStatus Status { get; private set; }
+        public JobStatus Status { get; set; }
 
         public Job(ShippingOrder shippingOrder)
         {

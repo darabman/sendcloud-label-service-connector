@@ -45,6 +45,9 @@ namespace LabelServiceConnector
                 var id = job.ShippingOrder.Id;
 
                 _logger.LogInformation($"Processing job '{id}'");
+                job.Status = Models.JobStatus.Fetching;
+
+                
                 Thread.Sleep(2500);
 
                 _logger.LogDebug($"Now I'm Sending it to the printer... '{id}'");
