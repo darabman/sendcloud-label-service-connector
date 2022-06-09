@@ -12,9 +12,11 @@ namespace LabelServiceConnector
     {
         private static IConfigurationRoot _root;
 
-        public static IConfigurationSection App => _root.GetSection("App");
+        public static IConfigurationSection Config => _root.GetSection("Config");
 
         public static IConfigurationSection Logging => _root.GetSection("Logging");
+
+        public static IConfigurationSection Api => _root.GetSection("Api");
 
         static Configuration()
         {

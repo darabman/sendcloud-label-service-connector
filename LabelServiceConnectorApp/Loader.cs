@@ -27,11 +27,11 @@ namespace LabelServiceConnector
         {
             new Task(() =>
             {
-                int delayMs = int.Parse(Configuration.App["CsvScanRateMs"] ?? "1000");
+                int delayMs = int.Parse(Configuration.Config["CsvScanRateMs"] ?? "1000");
 
                 while (!_cancel.IsCancellationRequested)
                 {
-                    ScanDirectory(Configuration.App["CsvInputDir"] ?? "./");
+                    ScanDirectory(Configuration.Config["CsvInputDir"] ?? "./");
                     Thread.Sleep(delayMs);
                 }
 
@@ -72,8 +72,8 @@ namespace LabelServiceConnector
 
         private Dictionary<string, string> ParseCSV(string text)
         {
-            var rowSep = Configuration.App["CsvRowSeparator"] ?? "\n";
-            var fieldSep = Configuration.App["CsvFieldSeparator"] ?? ";";
+            var rowSep = Configuration.Config["CsvRowSeparator"] ?? "\r\n";
+            var fieldSep = Configuration.Config["CsvFieldSeparator"] ?? ";";
 
             var rows = text.Split(rowSep);
             
@@ -84,7 +84,12 @@ namespace LabelServiceConnector
 
             for (int i = 0; i < header.Length; i++)
             {
-                kv.Add(header[i], values[i] ?? "");
+                if (string.IsNullOrEmpty(values[i]))
+                {
+                    continue;
+                }
+
+                kv.Add(header[i], values[i]);
             }
 
             return kv;

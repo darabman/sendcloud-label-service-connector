@@ -2,6 +2,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using LabelServiceConnector.WebApi;
+using KeyEncryptorLib;
+using SendCloudApi.Net.Models;
+using Newtonsoft.Json;
 
 namespace LabelServiceConnector
 {
@@ -32,6 +36,36 @@ namespace LabelServiceConnector
 
         private void LabelProcess()
         {
+            //Load API configuration
+            var ep = Configuration.Api["EndPoint"];
+            var key = Configuration.Api["ApiKey"];
+            var cryptedSecret = Configuration.Api["EncryptedSecret"];
+            string secret = string.Empty;
+
+            try
+            {
+                secret = KeyEncryptor.Decrypt(cryptedSecret);
+            }
+            catch (Exception ex)
+            {
+                if (ep != "None")
+                {
+                    _logger.LogError("Could not decrypt API secret from application settings");
+                    _logger.LogDebug(ex.ToString() + $" {ex.Message}");
+
+                    return;
+                }
+            }
+
+            _logger.LogDebug($"Constructing API with " +
+                $"Endpoint '{ep}' " +
+                $"Key '{key}', " +
+                $"Secret '{secret[0] + new string('*', secret.Length - 2) + secret[^1]}'");
+
+            IWebClient webClient = (ep == "None")
+                ? new EmptyWebClient()
+                : new SendCloudWebClient(ep, key, secret);
+
             do
             {
                 var job = JobQueue.Next();
@@ -47,7 +81,24 @@ namespace LabelServiceConnector
                 _logger.LogInformation($"Processing job '{id}'");
                 job.Status = Models.JobStatus.Fetching;
 
+                //Build a new request from job
+                CreateParcel request;
+
+                try
+                {
+                    var jsonFields = JsonConvert.SerializeObject(job.ShippingOrder.Fields);
+                    request = SendCloudApi.Net.Helpers.JsonHelper.Deserialize<CreateParcel>(jsonFields, "");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Could not transform job '{id}' into a valid request, skipping..");
+                    _logger.LogDebug(ex.ToString() + $" {ex.Message}");
+
+                    continue;
+                }
                 
+
+
                 Thread.Sleep(2500);
 
                 _logger.LogDebug($"Now I'm Sending it to the printer... '{id}'");
@@ -60,7 +111,7 @@ namespace LabelServiceConnector
 
             } while (JobQueue.JobReady);
 
-            _logger.LogDebug("Job Queue Empty");
+            _logger.LogInformation("Job Queue Empty");
         }
     }
 }
