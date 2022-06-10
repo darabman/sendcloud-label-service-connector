@@ -1,16 +1,17 @@
 ﻿using System.Collections.Generic;
+using System.Threading.Tasks;
 using SendCloudApi.Net.Models;
 
 namespace LabelServiceConnector.WebApi
 {
     public interface IWebClient
     {
-        public ShippingMethod[] GetShippingMethods();
+        public Task<Parcel<Country>> CreateParcel(CreateParcel createParcel);
 
-        public ShippingMethod GetShippingMethod(string id);
+        public Task<Label> CreateLabel(int[] parcelId);
 
-        public Parcel<Country> CreateParcel(CreateParcel createParcel);
+        public Task<byte[]> DownloadLabel(string url);
 
-        public Parcel<Country> GetParcel(string id);
+        public Task<ShippingMethod[]> GetShippingMethods();
     }
 }

@@ -9,24 +9,24 @@ namespace LabelServiceConnector.WebApi
 {
     internal class EmptyWebClient : IWebClient
     {
-        public Parcel<Country> CreateParcel(CreateParcel createParcel)
+        public Task<Label> CreateLabel(int[] parcelId)
         {
-            return new Parcel<Country>();
+            throw new NotImplementedException();
         }
 
-        public Parcel<Country> GetParcel(string id)
+        public Task<Parcel<Country>> CreateParcel(CreateParcel createParcel)
         {
-            return new Parcel<Country>();
+            throw new NotImplementedException();
         }
 
-        public ShippingMethod GetShippingMethod(string id)
+        public Task<byte[]> DownloadLabel(string url)
         {
-            return new ShippingMethod();
+            throw new NotImplementedException();
         }
 
-        public ShippingMethod[] GetShippingMethods()
+        public Task<ShippingMethod[]> GetShippingMethods()
         {
-            return new ShippingMethod[0];
+            throw new NotImplementedException();
         }
     }
 }

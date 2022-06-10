@@ -28,11 +28,22 @@ namespace LabelServiceConnector
             new Task(() =>
             {
                 int delayMs = int.Parse(Configuration.Config["CsvScanRateMs"] ?? "1000");
+                string path = Configuration.Config["CsvInputDir"] ?? "./";
 
                 while (!_cancel.IsCancellationRequested)
                 {
-                    ScanDirectory(Configuration.Config["CsvInputDir"] ?? "./");
-                    Thread.Sleep(delayMs);
+                    try
+                    {
+                        ScanDirectory(path);
+                        Thread.Sleep(delayMs);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Could not read CSVs from directory '{path}'");
+                        _logger.LogDebug(ex.ToString() + $" {ex.Message}");
+
+                        break;
+                    }
                 }
 
             }).Start();
@@ -43,6 +54,7 @@ namespace LabelServiceConnector
             var dir = new DirectoryInfo(path);
             var shippingOrders = new List<ShippingOrder>();
             var files = dir.GetFiles("*.csv").OrderBy(f => f.CreationTime);
+
 
             if (files.Any())
                 _logger.LogInformation($"Found {files.Count()} CSV files in '{path}'");

@@ -2,10 +2,13 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using System.IO;
 using LabelServiceConnector.WebApi;
 using KeyEncryptorLib;
 using SendCloudApi.Net.Models;
+using System.Linq;
 using Newtonsoft.Json;
+using System.Collections.Generic;
 
 namespace LabelServiceConnector
 {
@@ -76,9 +79,7 @@ namespace LabelServiceConnector
                     break;
                 }
 
-                var id = job.ShippingOrder.Id;
-
-                _logger.LogInformation($"Processing job '{id}'");
+                _logger.LogInformation($"Processing job '{job.ShippingOrder.Id}'");
                 job.Status = Models.JobStatus.Fetching;
 
                 //Build a new request from job
@@ -91,20 +92,40 @@ namespace LabelServiceConnector
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError($"Could not transform job '{id}' into a valid request, skipping..");
+                    _logger.LogError($"Could not transform job '{job.ShippingOrder.Id}' into a valid request, skipping..");
                     _logger.LogDebug(ex.ToString() + $" {ex.Message}");
 
                     continue;
                 }
+
+                var methodName = "Unstamped letter";
+                var methods = webClient.GetShippingMethods().Result;
+                var methodId = methods
+                    .Where(m => m.Name == methodName)
+                    .Select(m => m.Id)
+                    .FirstOrDefault(-1);
+
+                _logger.LogInformation($"Creating parcel with Shipping Method ID [{methodId}] '{methodName}' ");
                 
+                request.RequestLabel = true;
+                request.ShippingMethod = methodId;
 
+                var parcel = webClient.CreateParcel(request).Result;
 
-                Thread.Sleep(2500);
+                _logger.LogInformation($"Created parcel '{parcel.Id}'");
+                _logger.LogInformation($"Fetching label from '{parcel.Label.LabelPrinter}'");
 
-                _logger.LogDebug($"Now I'm Sending it to the printer... '{id}'");
+                var pdfBytes = webClient.DownloadLabel(parcel.Label.LabelPrinter).Result;
+                var pdfPath = $"pdf_out/{parcel.Id}.pdf";
+
+                _logger.LogInformation($"Saving label to '{pdfPath}'");
+
+                File.WriteAllBytes(pdfPath, pdfBytes);
+
+                //_logger.LogDebug($"Now I'm Sending it to the printer... '{id}'");
                 Thread.Sleep(1200);
 
-                _logger.LogDebug($"Now I'm writing it back to disk... '{id}'");
+                //_logger.LogDebug($"Now I'm writing it back to disk... '{id}'");
                 Thread.Sleep(500);
 
                 _logger.LogDebug("Done!");

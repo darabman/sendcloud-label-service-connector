@@ -17,25 +17,25 @@ namespace LabelServiceConnector.WebApi
             _client = new SendCloudClient(apiKey, secret);
         }
 
-        public Parcel<Country> CreateParcel(CreateParcel createParcel)
+        public Task<Parcel<Country>> CreateParcel(CreateParcel createParcel)
         {
-            throw new NotImplementedException();
+            return _client.Parcels.Create(createParcel);
         }
 
-        public Parcel<Country> GetParcel(string id)
-        {
-            throw new NotImplementedException();
+        public Task<Label> CreateLabel(int[] parcelId)
+        {   
+            _client.Label.BulkCreate(parcelId).Wait();
+            return _client.Label.Get(parcelId[0]);
         }
 
-        public ShippingMethod GetShippingMethod(string id)
+        public Task<byte[]> DownloadLabel(string url)
         {
-            throw new NotImplementedException();
+            return _client.Download(url);
         }
 
-        public ShippingMethod[] GetShippingMethods()
+        public Task<ShippingMethod[]> GetShippingMethods()
         {
-            throw new NotImplementedException();
+            return _client.ShippingMethods.Get();
         }
-
     }
 }
