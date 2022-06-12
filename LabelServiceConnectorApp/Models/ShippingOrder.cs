@@ -13,11 +13,12 @@ namespace LabelServiceConnector.Models
         {
             FileInformation = fileInformation;
             LoadedTime = DateTime.Now;
+            Fields = new Dictionary<string, string>();
         }
 
         public string Id => FileInformation.Name.Split('.')[0];
 
-        public Dictionary<string, string>? Fields { get; set; }
+        public Dictionary<string, string> Fields { get; set; }
 
         public string? TrackingNumber { get; set; }
 

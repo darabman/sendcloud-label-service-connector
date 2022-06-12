@@ -96,12 +96,14 @@ namespace LabelServiceConnector
 
             for (int i = 0; i < header.Length; i++)
             {
-                if (string.IsNullOrEmpty(values[i]))
+                var value = values[i] ?? string.Empty;
+
+                if (string.IsNullOrEmpty(value))
                 {
                     continue;
                 }
 
-                kv.Add(header[i], values[i]);
+                kv.Add(header[i], value);
             }
 
             return kv;

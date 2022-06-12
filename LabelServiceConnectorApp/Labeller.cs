@@ -9,6 +9,7 @@ using SendCloudApi.Net.Models;
 using System.Linq;
 using Newtonsoft.Json;
 using System.Collections.Generic;
+using Microsoft.Extensions.Configuration;
 
 namespace LabelServiceConnector
 {
@@ -39,6 +40,8 @@ namespace LabelServiceConnector
 
         private void LabelProcess()
         {
+            #region Configure API
+
             //Load API configuration
             var ep = Configuration.Api["EndPoint"];
             var key = Configuration.Api["ApiKey"];
@@ -69,6 +72,10 @@ namespace LabelServiceConnector
                 ? new EmptyWebClient()
                 : new SendCloudWebClient(ep, key, secret);
 
+            var shippingMethods = webClient.GetShippingMethods().Result;
+
+            #endregion
+
             do
             {
                 var job = JobQueue.Next();
@@ -98,14 +105,22 @@ namespace LabelServiceConnector
                     continue;
                 }
 
-                var methodName = "Unstamped letter";
-                var methods = webClient.GetShippingMethods().Result;
-                var methodId = methods
-                    .Where(m => m.Name == methodName)
+                var methodString = ConstructShippingMethodString(shippingMethods, job.ShippingOrder.Fields);
+                
+                var methodId = shippingMethods
+                    .Where(m => m.Name == methodString)
                     .Select(m => m.Id)
                     .FirstOrDefault(-1);
 
-                _logger.LogInformation($"Creating parcel with Shipping Method ID [{methodId}] '{methodName}' ");
+                if (methodId == -1)
+                {
+                    _logger.LogError($"Unable to retrieve shipping method named '{methodString}', " 
+                        + "please check the shipping order parameters}");
+
+                    continue;
+                }
+
+                _logger.LogInformation($"Creating parcel with Shipping Method '{methodString}' ID [{methodId}] ");
                 
                 request.RequestLabel = true;
                 request.ShippingMethod = methodId;
@@ -133,6 +148,34 @@ namespace LabelServiceConnector
             } while (JobQueue.JobReady);
 
             _logger.LogInformation("Job Queue Empty");
+        }
+
+        private string ConstructShippingMethodString(IEnumerable<ShippingMethod> methods, IDictionary<string, string> parameters)
+        {
+
+            var mode = parameters["mode_of_shipment"] ?? string.Empty;            
+            var weight = float.Parse(parameters["weight"] ?? "0");
+
+            _logger.LogDebug($"Shipping method is '{mode}' for parcel of weight '{weight}'");
+
+            var mapping = Configuration.FieldMapping.GetSection(parameters["mode_of_shipment"] ?? "");
+
+            var ranges = mapping
+                .GetSection("WeightRanges")
+                .GetChildren()
+                .Select(w => new Tuple<int, int>(
+                    int.Parse(w["min"]), 
+                    int.Parse(w["max"])
+                    ));
+
+            //Select weight category by highest
+            var range = ranges
+                .Where(r => weight >= r.Item1 && weight <= r.Item2)
+                .FirstOrDefault(new Tuple<int, int>(0, 100));
+            
+            return mapping["MethodString"]
+                .Replace("{min}", $"{range.Item1}")
+                .Replace("{max}", $"{range.Item2}");
         }
     }
 }
