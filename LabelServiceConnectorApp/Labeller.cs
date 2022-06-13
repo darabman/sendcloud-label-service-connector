@@ -42,7 +42,6 @@ namespace LabelServiceConnector
         {
             #region Configure API
 
-            //Load API configuration
             var ep = Configuration.Api["EndPoint"];
             var key = Configuration.Api["ApiKey"];
             var cryptedSecret = Configuration.Api["EncryptedSecret"];
@@ -50,14 +49,15 @@ namespace LabelServiceConnector
 
             try
             {
+                //API secret not stored plaintext
                 secret = KeyEncryptor.Decrypt(cryptedSecret);
             }
             catch (Exception ex)
             {
                 if (ep != "None")
                 {
-                    _logger.LogError("Could not decrypt API secret from application settings");
-                    _logger.LogDebug(ex.ToString() + $" {ex.Message}");
+                    _logger.LogError("Could not decrypt API secret from application settings!");
+                    _logger.LogDebug(ex + $" {ex.Message}");
 
                     return;
                 }
@@ -71,13 +71,28 @@ namespace LabelServiceConnector
             IWebClient webClient = (ep == "None")
                 ? new EmptyWebClient()
                 : new SendCloudWebClient(ep, key, secret);
+            
+            //List of shipping methods won't change between jobs so retrieve only once
+            ShippingMethod[] shippingMethods;
 
-            var shippingMethods = webClient.GetShippingMethods().Result;
+            try
+            {
+                shippingMethods = webClient.GetShippingMethods().Result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError("Couldn't get shipping methods from Label Provider!");
+                _logger.LogDebug($"'{ex}' {ex.Message}");
 
-            #endregion
+                return;
+            }            
+
+            #endregion // Configure API
 
             do
             {
+                #region Retrieve Label
+
                 var job = JobQueue.Next();
 
                 if (job == null)
@@ -89,7 +104,7 @@ namespace LabelServiceConnector
                 _logger.LogInformation($"Processing job '{job.ShippingOrder.Id}'");
                 job.Status = Models.JobStatus.Fetching;
 
-                //Build a new request from job
+                //Build a new request from the shipping order's CSV fields
                 CreateParcel request;
 
                 try
@@ -100,11 +115,12 @@ namespace LabelServiceConnector
                 catch (Exception ex)
                 {
                     _logger.LogError($"Could not transform job '{job.ShippingOrder.Id}' into a valid request, skipping..");
-                    _logger.LogDebug(ex.ToString() + $" {ex.Message}");
+                    _logger.LogDebug($"'{ex}' {ex.Message}");
 
                     continue;
                 }
 
+                //Match shipping order data to appropriate Shipping Method
                 var methodString = ConstructShippingMethodString(shippingMethods, job.ShippingOrder.Fields);
                 
                 var methodId = shippingMethods
@@ -115,33 +131,88 @@ namespace LabelServiceConnector
                 if (methodId == -1)
                 {
                     _logger.LogError($"Unable to retrieve shipping method named '{methodString}', " 
-                        + "please check the shipping order parameters}");
+                        + "please check the shipping order parameters");
 
                     continue;
                 }
 
                 _logger.LogInformation($"Creating parcel with Shipping Method '{methodString}' ID [{methodId}] ");
-                
+
                 request.RequestLabel = true;
                 request.ShippingMethod = methodId;
 
-                var parcel = webClient.CreateParcel(request).Result;
+                //Call the label provider and save the resulting PDF
+                try
+                {
+                    var parcel = webClient.CreateParcel(request).Result;
 
-                _logger.LogInformation($"Created parcel '{parcel.Id}'");
-                _logger.LogInformation($"Fetching label from '{parcel.Label.LabelPrinter}'");
+                    job.ShippingOrder.TrackingNumber = parcel.TrackingNumber;
 
-                var pdfBytes = webClient.DownloadLabel(parcel.Label.LabelPrinter).Result;
-                var pdfPath = $"pdf_out/{parcel.Id}.pdf";
+                    _logger.LogInformation($"Created parcel '{parcel.Id}' with tracking number '{parcel.TrackingNumber}'");
+                    _logger.LogInformation($"Fetching label from '{parcel.Label.LabelPrinter}'");
 
-                _logger.LogInformation($"Saving label to '{pdfPath}'");
+                    var pdfBytes = webClient.DownloadLabel(parcel.Label.LabelPrinter).Result;
 
-                File.WriteAllBytes(pdfPath, pdfBytes);
+                    var outDir = Directory.CreateDirectory(Configuration.Config["PdfOutputDir"] ?? "./");
+                    var outPath = $"{outDir}{parcel.Id}.pdf";
 
-                //_logger.LogDebug($"Now I'm Sending it to the printer... '{id}'");
-                Thread.Sleep(1200);
+                    _logger.LogInformation($"Saving label to '{outPath}'");
 
-                //_logger.LogDebug($"Now I'm writing it back to disk... '{id}'");
-                Thread.Sleep(500);
+                    File.WriteAllBytes(outPath, pdfBytes);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Unable to retrieve label! '{ex}': {ex.Message}");
+
+                    continue;
+                }
+
+                #endregion // Retrieve Label
+
+                #region Write Back Tracking Number
+
+                var outputDir = Configuration.Config["CsvOutputDir"] ?? "./";
+                var fieldSep = Configuration.Config["CsvFieldSeparator"];
+                var rowSep = Configuration.Config["CsvRowSeparator"];
+
+                var csvOut = Directory.CreateDirectory(outputDir) + job.ShippingOrder.Id + ".csv";
+
+                _logger.LogInformation($"Saving updated shipping order to '{csvOut}'");
+
+                using (var fw = File.CreateText(csvOut))
+                {
+                    foreach (var header in job.ShippingOrder.Fields.Keys)
+                    {
+                        fw.Write(header + fieldSep);
+                    }
+
+                    if (!job.ShippingOrder.Fields.ContainsKey("tracking_number"))
+                    {
+                        fw.Write("tracking_number");
+                    }
+
+                    fw.Write(rowSep);
+
+                    foreach (var value in job.ShippingOrder.Fields.Values)
+                    {
+                        fw.Write(value + fieldSep);
+                    }
+
+                    if (!job.ShippingOrder.Fields.ContainsKey("tracking_number"))
+                    {
+                        fw.Write(job.ShippingOrder.TrackingNumber);
+                    }
+                    else
+                    {
+                        job.ShippingOrder.Fields["tracking_number"] = job.ShippingOrder.TrackingNumber;
+                    }                        
+                } 
+
+                #endregion // Write Back Tracking Number
+
+                #region Print Label
+
+                #endregion // Print Label
 
                 _logger.LogDebug("Done!");
 
@@ -152,14 +223,26 @@ namespace LabelServiceConnector
 
         private string ConstructShippingMethodString(IEnumerable<ShippingMethod> methods, IDictionary<string, string> parameters)
         {
+            parameters.TryGetValue("mode_of_shipment", out string? mode);
 
-            var mode = parameters["mode_of_shipment"] ?? string.Empty;            
-            var weight = float.Parse(parameters["weight"] ?? "0");
+            if (mode == null)
+            {
+                _logger.LogWarning("The mode was not defined in the Shipping Order, using default");
+                mode = "default";
+            }
+
+            if (!parameters.TryGetValue("weight", out string? weightString) ||
+                !float.TryParse(weightString, out float weight))
+            {
+                _logger.LogError("No value specified for parcel weight!");
+                return "no_weight";
+            }
 
             _logger.LogDebug($"Shipping method is '{mode}' for parcel of weight '{weight}'");
 
-            var mapping = Configuration.FieldMapping.GetSection(parameters["mode_of_shipment"] ?? "");
-
+            var mapping = Configuration.FieldMapping.GetSection(mode);
+            
+            var methodString = mapping["MethodString"];
             var ranges = mapping
                 .GetSection("WeightRanges")
                 .GetChildren()
@@ -172,10 +255,16 @@ namespace LabelServiceConnector
             var range = ranges
                 .Where(r => weight >= r.Item1 && weight <= r.Item2)
                 .FirstOrDefault(new Tuple<int, int>(0, 100));
-            
-            return mapping["MethodString"]
-                .Replace("{min}", $"{range.Item1}")
-                .Replace("{max}", $"{range.Item2}");
+
+            if (range != default)
+            {
+                //Interpolate range values, if they exist
+                methodString = methodString
+                                .Replace("{min}", $"{range.Item1}")
+                                .Replace("{max}", $"{range.Item2}");
+            }
+
+            return methodString;
         }
     }
 }
