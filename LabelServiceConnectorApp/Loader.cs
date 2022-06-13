@@ -75,8 +75,8 @@ namespace LabelServiceConnector
                     _logger.LogWarning($"Unable to process '{file.Name}', skipping..");
                     _logger.LogDebug($"{ex}: {ex.Message}");
 
-                    Directory.CreateDirectory(dir + "error/");
-                    file.CopyTo(dir + "error/" + file.Name, overwrite: true);
+                    Directory.CreateDirectory(dir + "/error/");
+                    file.CopyTo(dir + "/error/" + file.Name, overwrite: true);
                 }
                 finally
                 {

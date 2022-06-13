@@ -10,6 +10,7 @@ using System.Linq;
 using Newtonsoft.Json;
 using System.Collections.Generic;
 using Microsoft.Extensions.Configuration;
+using System.Globalization;
 
 namespace LabelServiceConnector
 {
@@ -44,24 +45,24 @@ namespace LabelServiceConnector
 
             var ep = Configuration.Api["EndPoint"];
             var key = Configuration.Api["ApiKey"];
-            var cryptedSecret = Configuration.Api["EncryptedSecret"];
-            string secret = string.Empty;
+            var cryptedSecret = Configuration.Api["ApiSecret"];
+            string secret = cryptedSecret;
 
-            try
-            {
-                //API secret not stored plaintext
-                secret = KeyEncryptor.Decrypt(cryptedSecret);
-            }
-            catch (Exception ex)
-            {
-                if (ep != "None")
-                {
-                    _logger.LogError("Could not decrypt API secret from application settings!");
-                    _logger.LogDebug(ex + $" {ex.Message}");
+            //try
+            //{
+            //    //API secret not stored plaintext
+            //    secret = KeyEncryptor.Decrypt(cryptedSecret);
+            //}
+            //catch (Exception ex)
+            //{
+            //    if (ep != "None")
+            //    {
+            //        _logger.LogError("Could not decrypt API secret from application settings!");
+            //        _logger.LogDebug(ex + $" {ex.Message}");
 
-                    return;
-                }
-            }
+            //        return;
+            //    }
+            //}
 
             _logger.LogDebug($"Constructing API with " +
                 $"Endpoint '{ep}' " +
@@ -130,7 +131,7 @@ namespace LabelServiceConnector
 
                 if (methodId == -1)
                 {
-                    _logger.LogError($"Unable to retrieve shipping method named '{methodString}', " 
+                    _logger.LogError($"Unable to find a shipping method named '{methodString}', " 
                         + "please check the shipping order parameters");
 
                     continue;
@@ -172,8 +173,8 @@ namespace LabelServiceConnector
                 #region Write Back Tracking Number
 
                 var outputDir = Configuration.Config["CsvOutputDir"] ?? "./";
-                var fieldSep = Configuration.Config["CsvFieldSeparator"];
-                var rowSep = Configuration.Config["CsvRowSeparator"];
+                var fieldSep = Configuration.Config["CsvFieldSeparator"] ?? ";";
+                var rowSep = Configuration.Config["CsvRowSeparator"] ?? "\r\n";
 
                 var csvOut = Directory.CreateDirectory(outputDir) + job.ShippingOrder.Id + ".csv";
 
@@ -214,7 +215,7 @@ namespace LabelServiceConnector
 
                 #endregion // Print Label
 
-                _logger.LogDebug("Done!");
+                _logger.LogDebug($"Finishing processing job '{job.ShippingOrder.Id}'");
 
             } while (JobQueue.JobReady);
 
@@ -225,14 +226,14 @@ namespace LabelServiceConnector
         {
             parameters.TryGetValue("mode_of_shipment", out string? mode);
 
-            if (mode == null)
+            if (string.IsNullOrEmpty(mode))
             {
                 _logger.LogWarning("The mode was not defined in the Shipping Order, using default");
                 mode = "default";
             }
 
             if (!parameters.TryGetValue("weight", out string? weightString) ||
-                !float.TryParse(weightString, out float weight))
+                !float.TryParse(weightString, NumberStyles.Any, CultureInfo.InvariantCulture, out float weight))
             {
                 _logger.LogError("No value specified for parcel weight!");
                 return "no_weight";
@@ -253,7 +254,8 @@ namespace LabelServiceConnector
 
             //Select weight category by highest
             var range = ranges
-                .Where(r => weight >= r.Item1 && weight <= r.Item2)
+                .Where(r => weight >= r.Item1 && weight < r.Item2)
+                .OrderByDescending(r => r.Item2)
                 .FirstOrDefault(new Tuple<int, int>(0, 100));
 
             if (range != default)
