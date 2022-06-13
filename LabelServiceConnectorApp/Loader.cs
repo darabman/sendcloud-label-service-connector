@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -27,8 +26,8 @@ namespace LabelServiceConnector
         {
             new Task(() =>
             {
-                int delayMs = int.Parse(Configuration.Config["CsvScanRateMs"] ?? "1000");
-                string path = Configuration.Config["CsvInputDir"] ?? "./";
+                var delayMs = int.Parse(Configuration.Config["CsvScanRateMs"] ?? "1000");
+                var path = Directory.CreateDirectory(Configuration.Config["CsvInputDir"] ?? "./");
 
                 while (!_cancel.IsCancellationRequested)
                 {
@@ -49,15 +48,14 @@ namespace LabelServiceConnector
             }).Start();
         }
 
-        public void ScanDirectory(string path)
+        public void ScanDirectory(DirectoryInfo dir)
         {
-            var dir = new DirectoryInfo(path);
             var shippingOrders = new List<ShippingOrder>();
             var files = dir.GetFiles("*.csv").OrderBy(f => f.CreationTime);
 
 
             if (files.Any())
-                _logger.LogInformation($"Found {files.Count()} CSV files in '{path}'");
+                _logger.LogInformation($"Found {files.Count()} CSV files in '{dir}'");
 
             foreach (var file in files)
             {
@@ -70,14 +68,19 @@ namespace LabelServiceConnector
                         so.Fields = ParseCSV(fileText.ReadToEnd());
                     }
 
-                    file.Delete();
-
                     JobQueue.AddJob(so);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning($"Unable to process '{file.Name}', skipping..");
                     _logger.LogDebug($"{ex}: {ex.Message}");
+
+                    Directory.CreateDirectory(dir + "error/");
+                    file.CopyTo(dir + "error/" + file.Name, overwrite: true);
+                }
+                finally
+                {
+                    file.Delete();
                 }
             }
         }
