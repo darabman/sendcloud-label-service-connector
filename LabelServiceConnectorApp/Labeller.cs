@@ -45,24 +45,7 @@ namespace LabelServiceConnector
 
             var ep = Configuration.Api["EndPoint"];
             var key = Configuration.Api["ApiKey"];
-            var cryptedSecret = Configuration.Api["ApiSecret"];
-            string secret = cryptedSecret;
-
-            //try
-            //{
-            //    //API secret not stored plaintext
-            //    secret = KeyEncryptor.Decrypt(cryptedSecret);
-            //}
-            //catch (Exception ex)
-            //{
-            //    if (ep != "None")
-            //    {
-            //        _logger.LogError("Could not decrypt API secret from application settings!");
-            //        _logger.LogDebug(ex + $" {ex.Message}");
-
-            //        return;
-            //    }
-            //}
+            var secret = Configuration.Api["ApiSecret"];
 
             _logger.LogDebug($"Constructing API with " +
                 $"Endpoint '{ep}' " +
