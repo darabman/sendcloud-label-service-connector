@@ -157,7 +157,6 @@ namespace LabelServiceConnector
 
                 var outputDir = Configuration.Config["CsvOutputDir"] ?? "./";
                 var fieldSep = Configuration.Config["CsvFieldSeparator"] ?? ";";
-                var rowSep = Configuration.Config["CsvRowSeparator"] ?? "\r\n";
 
                 var csvOut = Directory.CreateDirectory(outputDir) + job.ShippingOrder.Id + ".csv";
 
@@ -175,7 +174,7 @@ namespace LabelServiceConnector
                         fw.Write("tracking_number");
                     }
 
-                    fw.Write(rowSep);
+                    fw.Write(Environment.NewLine);
 
                     foreach (var value in job.ShippingOrder.Fields.Values)
                     {

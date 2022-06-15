@@ -6,7 +6,8 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-
+using System.Linq;
+using System.Text;
 
 namespace LabelServiceConnector
 {
@@ -28,12 +29,13 @@ namespace LabelServiceConnector
             {
                 var delayMs = int.Parse(Configuration.Config["CsvScanRateMs"] ?? "1000");
                 var path = Directory.CreateDirectory(Configuration.Config["CsvInputDir"] ?? "./");
+                var encoding = Encoding.GetEncoding(Configuration.Config["TextEncoding"] ?? "iso-8859-1");
 
                 while (!_cancel.IsCancellationRequested)
                 {
                     try
                     {
-                        ScanDirectory(path);
+                        ScanDirectory(path, encoding);
                         Thread.Sleep(delayMs);
                     }
                     catch (Exception ex)
@@ -48,11 +50,10 @@ namespace LabelServiceConnector
             }).Start();
         }
 
-        public void ScanDirectory(DirectoryInfo dir)
+        public void ScanDirectory(DirectoryInfo dir, Encoding fileEncoding)
         {
             var shippingOrders = new List<ShippingOrder>();
-            var files = dir.GetFiles("*.csv").OrderBy(f => f.CreationTime);
-
+            var files = dir.GetFiles("*.csv").OrderBy(f => f.CreationTime);            
 
             if (files.Any())
                 _logger.LogInformation($"Found {files.Count()} CSV files in '{dir}'");
@@ -63,7 +64,7 @@ namespace LabelServiceConnector
                 {
                     var so = new ShippingOrder(file);
 
-                    using (var fileText = file.OpenText())
+                    using (var fileText = new StreamReader(file.FullName, fileEncoding))
                     {
                         so.Fields = ParseCSV(fileText.ReadToEnd());
                     }
@@ -87,13 +88,17 @@ namespace LabelServiceConnector
 
         private Dictionary<string, string> ParseCSV(string text)
         {
-            var rowSep = Configuration.Config["CsvRowSeparator"] ?? "\r\n";
             var fieldSep = Configuration.Config["CsvFieldSeparator"] ?? ";";
 
-            var rows = text.Split(rowSep);
-            
+            var rows = text.Split(Environment.NewLine);
             var header = rows[0].Split(fieldSep);
-            var values = rows[1].Split(fieldSep);
+
+            //Flatten remaining rows to permit newlines in the values
+            var values = new string(rows
+                .Skip(1)
+                .SelectMany(s => s + " ")
+                .ToArray())
+                .Split(fieldSep);
 
             var kv = new Dictionary<string, string>();
 
