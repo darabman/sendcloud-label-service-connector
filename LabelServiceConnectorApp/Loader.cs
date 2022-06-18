@@ -92,13 +92,7 @@ namespace LabelServiceConnector
 
             var rows = text.Split(Environment.NewLine);
             var header = rows[0].Split(fieldSep);
-
-            //Flatten remaining rows to permit newlines in the values
-            var values = new string(rows
-                .Skip(1)
-                .SelectMany(s => s + " ")
-                .ToArray())
-                .Split(fieldSep);
+            var values = rows[1].Split(fieldSep);
 
             var kv = new Dictionary<string, string>();
 
