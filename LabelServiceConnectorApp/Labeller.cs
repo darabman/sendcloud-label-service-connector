@@ -11,6 +11,8 @@ using Newtonsoft.Json;
 using System.Collections.Generic;
 using Microsoft.Extensions.Configuration;
 using System.Globalization;
+using System.Diagnostics;
+using Microsoft.Win32;
 
 namespace LabelServiceConnector
 {
@@ -126,6 +128,8 @@ namespace LabelServiceConnector
                 request.ShippingMethod = methodId;
 
                 //Call the label provider and save the resulting PDF
+                string pdfOutputPath = string.Empty;
+
                 try
                 {
                     var parcel = webClient.CreateParcel(request).Result;
@@ -138,11 +142,11 @@ namespace LabelServiceConnector
                     var pdfBytes = webClient.DownloadLabel(parcel.Label.LabelPrinter).Result;
 
                     var outDir = Directory.CreateDirectory(Configuration.Config["PdfOutputDir"] ?? "./");
-                    var outPath = $"{outDir}{parcel.Id}.pdf";
+                    pdfOutputPath = $"{outDir}{parcel.Id}.pdf";
 
-                    _logger.LogInformation($"Saving label to '{outPath}'");
+                    _logger.LogInformation($"Saving label to '{pdfOutputPath}'");
 
-                    File.WriteAllBytes(outPath, pdfBytes);
+                    File.WriteAllBytes(pdfOutputPath, pdfBytes);
                 }
                 catch (Exception ex)
                 {
@@ -189,15 +193,53 @@ namespace LabelServiceConnector
                     {
                         job.ShippingOrder.Fields["tracking_number"] = job.ShippingOrder.TrackingNumber;
                     }                        
-                } 
+                }
 
                 #endregion // Write Back Tracking Number
 
                 #region Print Label
 
+                //Launch an installed printing app from command line, assuming Acrobat Reader
+                var keyString = Configuration.Config["PrinterAppRegistryKey"] ??
+                    @"SOFTWARE\Microsoft\Windows\CurrentVersion" +
+                    @"\App Paths\Acrobat.exe";
+                var argString = Configuration.Config["PrinterAppArgumentString"] ?? "/h /t \"{0}\" \"{1}\"";
+                var printerName = Configuration.Config["PrinterName"];
+
+                var acrobatKey = Registry.LocalMachine.OpenSubKey(keyString);
+
+                if (acrobatKey == null)
+                {
+                    _logger.LogWarning("Path to printer application was not recognised. Skipping printing..");
+                    _logger.LogDebug($"PrinterAppRegistryKey: '{keyString}'");
+                }
+                else
+                {
+                    try
+                    {   
+                        var proc = Process.Start(
+                           fileName: $"{acrobatKey.GetValue("")}",
+                           arguments: string.Format(argString, pdfOutputPath, printerName));
+
+                        _logger.LogInformation($"Printing '{pdfOutputPath}'");
+
+                        proc.WaitForExit();
+
+                        if (proc.ExitCode != 0)
+                        {
+                            throw new SystemException($"Application '{acrobatKey.GetValue("")}' returned exit code '{proc.ExitCode}'");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning("Couldn't execute printer application. Skipping printing..");
+                        _logger.LogDebug($"'{ex}': {ex.Message}");
+                    }
+                }
+
                 #endregion // Print Label
 
-                _logger.LogDebug($"Finishing processing job '{job.ShippingOrder.Id}'");
+                _logger.LogDebug($"Finished processing job '{job.ShippingOrder.Id}'");
 
             } while (JobQueue.JobReady);
 
