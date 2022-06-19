@@ -57,7 +57,7 @@ namespace LabelServiceConnector
             IWebClient webClient = (ep == "None")
                 ? new EmptyWebClient()
                 : new SendCloudWebClient(ep, key, secret);
-            
+
             //List of shipping methods won't change between jobs so retrieve only once
             ShippingMethod[] shippingMethods;
 
@@ -71,7 +71,7 @@ namespace LabelServiceConnector
                 _logger.LogDebug($"'{ex}' {ex.Message}");
 
                 return;
-            }            
+            }
 
             #endregion // Configure API
 
@@ -83,74 +83,103 @@ namespace LabelServiceConnector
 
                 if (job == null)
                 {
-                    _logger.LogWarning("Job queue returned null");                    
+                    _logger.LogWarning("Job queue returned null");
                     break;
                 }
 
-                _logger.LogInformation($"Processing job '{job.ShippingOrder.Id}'");
+                _logger.LogInformation($"Processing job '{job.Id}'");
                 job.Status = Models.JobStatus.Fetching;
 
-                //Build a new request from the shipping order's CSV fields
-                CreateParcel request;
+                var parcelRequests = new List<CreateParcel>();
+                var badShippingMethod = false;
+                var badMethodString = string.Empty;
 
-                try
+                foreach (var order in job.ShippingOrders)
                 {
-                    var jsonFields = JsonConvert.SerializeObject(job.ShippingOrder.Fields);
-                    request = SendCloudApi.Net.Helpers.JsonHelper.Deserialize<CreateParcel>(jsonFields, "");
+                    try
+                    {
+                        //Build a new request from the shipping order's CSV fields
+                        var jsonFields = JsonConvert.SerializeObject(order.Fields);
+                        parcelRequests.Add(SendCloudApi.Net.Helpers.JsonHelper.Deserialize<CreateParcel>(jsonFields, ""));
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Could not transform job '{job.Id}' into a valid request, skipping..");
+                        _logger.LogDebug($"'{ex}' {ex.Message}");
+
+                        break;
+                    }
+
+                    //Match shipping order data to appropriate Shipping Method
+                    var methodString = ConstructShippingMethodString(shippingMethods, job.ShippingOrders[0].Fields);
+
+                    var methodId = shippingMethods
+                        .Where(m => m.Name == methodString)
+                        .Select(m => m.Id)
+                        .FirstOrDefault(-1);
+
+                    if (methodId == -1)
+                    {
+                        badShippingMethod = true;
+                        break;
+                    }
+
+                    _logger.LogInformation($"Creating parcel with Shipping Method '{methodString}' ID [{methodId}] ");
+
+                    parcelRequests.Last().ColloCount = job.ShippingOrders.Count;                    
+                    parcelRequests.Last().RequestLabel = true;
+                    parcelRequests.Last().ShippingMethod = methodId;
                 }
-                catch (Exception ex)
+
+                if (badShippingMethod)
                 {
-                    _logger.LogError($"Could not transform job '{job.ShippingOrder.Id}' into a valid request, skipping..");
-                    _logger.LogDebug($"'{ex}' {ex.Message}");
-
-                    continue;
-                }
-
-                //Match shipping order data to appropriate Shipping Method
-                var methodString = ConstructShippingMethodString(shippingMethods, job.ShippingOrder.Fields);
-                
-                var methodId = shippingMethods
-                    .Where(m => m.Name == methodString)
-                    .Select(m => m.Id)
-                    .FirstOrDefault(-1);
-
-                if (methodId == -1)
-                {
-                    _logger.LogError($"Unable to find a shipping method named '{methodString}', " 
+                    _logger.LogError($"Found an unknown shipping method '{badMethodString}', "
                         + "please check the shipping order parameters");
 
                     continue;
                 }
 
-                _logger.LogInformation($"Creating parcel with Shipping Method '{methodString}' ID [{methodId}] ");
+                if (parcelRequests.Count != job.ShippingOrders.Count)
+                {
+                    //Failed to transform all the SOs into valid requests
+                    continue;
+                }
 
-                request.RequestLabel = true;
-                request.ShippingMethod = methodId;
-
-                //Call the label provider and save the resulting PDF
-                string pdfOutputPath = string.Empty;
+                //Call the label provider and save the resulting PDF(s)
+                var pdfOutputPaths = new List<string>();
 
                 try
                 {
-                    var parcel = webClient.CreateParcel(request).Result;
+                    var parcels = webClient.CreateParcel(parcelRequests).Result;
 
-                    job.ShippingOrder.TrackingNumber = parcel.TrackingNumber;
+                    for (int i = 0; i < parcels.Length; i++)
+                    {
+                        job.ShippingOrders[i].TrackingNumber = parcels[i].TrackingNumber;
+                    }
 
-                    _logger.LogInformation($"Created parcel '{parcel.Id}' with tracking number '{parcel.TrackingNumber}'");
-                    _logger.LogInformation($"Fetching label from '{parcel.Label.LabelPrinter}'");
+                    foreach (var parcel in parcels)
+                    {
+                        _logger.LogInformation($"Created parcel '{parcel.Id}' with tracking number '{parcel.TrackingNumber}'");
+                        _logger.LogInformation($"Fetching label from '{parcel.Label.LabelPrinter}'");
 
-                    var pdfBytes = webClient.DownloadLabel(parcel.Label.LabelPrinter).Result;
+                        var pdfBytes = webClient.DownloadLabel(parcel.Label.LabelPrinter).Result;
 
-                    var outDir = Directory.CreateDirectory(Configuration.Config["PdfOutputDir"] ?? "./");
-                    pdfOutputPath = $"{outDir}{parcel.Id}.pdf";
+                        var outDir = Directory.CreateDirectory(Configuration.Config["PdfOutputDir"] ?? "./").FullName;
+                        var pdfOutputPath = $"{outDir}{parcel.Id}.pdf";
 
-                    _logger.LogInformation($"Saving label to '{pdfOutputPath}'");
+                        _logger.LogInformation($"Saving label to '{pdfOutputPath}'");
 
-                    File.WriteAllBytes(pdfOutputPath, pdfBytes);
+                        using (var fw = File.OpenWrite(pdfOutputPath))
+                        {
+                            fw.Write(pdfBytes);
+                        }
+
+                        pdfOutputPaths.Add(pdfOutputPath);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError($"Unable to retrieve label! '{ex}': {ex.Message}");
+                    _logger.LogError($"Unable to retrieve label(s)! '{ex}': {ex.Message}");
 
                     continue;
                 }
@@ -162,37 +191,41 @@ namespace LabelServiceConnector
                 var outputDir = Configuration.Config["CsvOutputDir"] ?? "./";
                 var fieldSep = Configuration.Config["CsvFieldSeparator"] ?? ";";
 
-                var csvOut = Directory.CreateDirectory(outputDir) + job.ShippingOrder.Id + ".csv";
+                var csvOut = Directory.CreateDirectory(outputDir) + job.Id + ".csv";
 
                 _logger.LogInformation($"Saving updated shipping order to '{csvOut}'");
 
                 using (var fw = File.CreateText(csvOut))
                 {
-                    foreach (var header in job.ShippingOrder.Fields.Keys)
+                    foreach (var header in job.ShippingOrders[0].Fields.Keys)
                     {
                         fw.Write(header + fieldSep);
                     }
 
-                    if (!job.ShippingOrder.Fields.ContainsKey("tracking_number"))
+                    if (!job.ShippingOrders[0].Fields.ContainsKey("tracking_number"))
                     {
                         fw.Write("tracking_number");
                     }
 
-                    fw.Write(Environment.NewLine);
-
-                    foreach (var value in job.ShippingOrder.Fields.Values)
+                    foreach (var order in job.ShippingOrders)
                     {
-                        fw.Write(value + fieldSep);
+                        fw.Write(Environment.NewLine);
+
+                        foreach (var value in order.Fields.Values)
+                        {
+                            fw.Write(value + fieldSep);
+                        }
+
+                        if (!order.Fields.ContainsKey("tracking_number"))
+                        {
+                            fw.Write(order.TrackingNumber);
+                        }
+                        else
+                        {
+                            order.Fields["tracking_number"] = order.TrackingNumber ?? "";
+                        }
                     }
 
-                    if (!job.ShippingOrder.Fields.ContainsKey("tracking_number"))
-                    {
-                        fw.Write(job.ShippingOrder.TrackingNumber);
-                    }
-                    else
-                    {
-                        job.ShippingOrder.Fields["tracking_number"] = job.ShippingOrder.TrackingNumber;
-                    }                        
                 }
 
                 #endregion // Write Back Tracking Number
@@ -215,31 +248,27 @@ namespace LabelServiceConnector
                 }
                 else
                 {
-                    try
-                    {   
-                        var proc = Process.Start(
-                           fileName: $"{acrobatKey.GetValue("")}",
-                           arguments: string.Format(argString, pdfOutputPath, printerName));
-
-                        _logger.LogInformation($"Printing '{pdfOutputPath}'");
-
-                        proc.WaitForExit();
-
-                        if (proc.ExitCode != 0)
-                        {
-                            throw new SystemException($"Application '{acrobatKey.GetValue("")}' returned exit code '{proc.ExitCode}'");
-                        }
-                    }
-                    catch (Exception ex)
+                    foreach (var path in pdfOutputPaths)
                     {
-                        _logger.LogWarning("Couldn't execute printer application. Skipping printing..");
-                        _logger.LogDebug($"'{ex}': {ex.Message}");
+                        try
+                        {
+                            var proc = Process.Start(
+                           fileName: $"{acrobatKey.GetValue("")}",
+                           arguments: string.Format(argString, path, printerName));
+
+                            _logger.LogInformation($"Printing '{path}'");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning("Couldn't execute printer application. Skipping printing..");
+                            _logger.LogDebug($"'{ex}': {ex.Message}");
+                        }
                     }
                 }
 
                 #endregion // Print Label
 
-                _logger.LogDebug($"Finished processing job '{job.ShippingOrder.Id}'");
+                _logger.LogDebug($"Finished processing job '{job.Id}'");
 
             } while (JobQueue.JobReady);
 
@@ -266,13 +295,13 @@ namespace LabelServiceConnector
             _logger.LogDebug($"Shipping method is '{mode}' for parcel of weight '{weight}'");
 
             var mapping = Configuration.FieldMapping.GetSection(mode);
-            
+
             var methodString = mapping["MethodString"];
             var ranges = mapping
                 .GetSection("WeightRanges")
                 .GetChildren()
                 .Select(w => new Tuple<int, int>(
-                    int.Parse(w["min"]), 
+                    int.Parse(w["min"]),
                     int.Parse(w["max"])
                     ));
 
