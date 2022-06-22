@@ -19,13 +19,12 @@ namespace LabelServiceConnector
                 image: null,
                 OnNotifyClose));
             
-
             _notifyIcon.Visible = true;
         }
 
         private void OnNotifyClose(object? sender, EventArgs e)
         {
-            var clickResult = MessageBox.Show("Would you click to close SendCloud Label Service Connector?", "Close Application", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            var clickResult = MessageBox.Show("Möchten Sie die Anwendung 'Label Service Connector' schließen?", "Anwendung schließens", MessageBoxButton.YesNo, MessageBoxImage.Question);
 
             if (clickResult == MessageBoxResult.Yes)
             {

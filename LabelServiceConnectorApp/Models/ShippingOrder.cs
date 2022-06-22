@@ -15,6 +15,8 @@ namespace LabelServiceConnector.Models
 
         public string? TrackingNumber { get; set; }
 
+        public int Quantity { get; set; }
+
         public DateTime LoadedTime { get; private set; }
     }
 }

@@ -6,7 +6,7 @@ namespace LabelServiceConnector.Models
 {
     public class Job
     {
-        public List<ShippingOrder> ShippingOrders { get; }
+        public ShippingOrder ShippingOrder { get; }
 
         public DateTime Touched { get; }
 
@@ -16,10 +16,10 @@ namespace LabelServiceConnector.Models
 
         public string Id => SourceFile.Name.Split('.')[0];
 
-        public Job(List<ShippingOrder> shippingOrders, FileInfo sourceFile)
+        public Job(ShippingOrder shippingOrders, FileInfo sourceFile)
         {
             Touched = DateTime.Now;
-            ShippingOrders = shippingOrders;
+            ShippingOrder = shippingOrders;
             SourceFile = sourceFile;
         }
     }

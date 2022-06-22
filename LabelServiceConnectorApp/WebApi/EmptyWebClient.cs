@@ -12,7 +12,7 @@ namespace LabelServiceConnector.WebApi
             throw new NotImplementedException();
         }
 
-        public Task<Parcel<Country>[]> CreateParcel(List<CreateParcel> createParcel)
+        public Task<Parcel<Country>[]> CreateParcels(CreateParcel parcel)
         {
             throw new NotImplementedException();
         }

@@ -61,16 +61,16 @@ namespace LabelServiceConnector
             {
                 try
                 {
-                    var orders = new List<ShippingOrder>();
+                    ShippingOrder order;
 
                     using (var fileText = new StreamReader(file.FullName, fileEncoding))
                     {
-                        orders = ParseCSV(fileText.ReadToEnd());
+                        order = ParseCSV(fileText.ReadToEnd());
                     }
 
-                    _logger.LogInformation($"Retrieved {orders.Count} order(s) from '{file.Name}'");
+                    _logger.LogInformation($"'{file.Name}' contains {order.Quantity} parcel(s)");
 
-                    JobQueue.AddJob(new Job(orders, file));
+                    JobQueue.AddJob(new Job(order, file));
                 }
                 catch (Exception ex)
                 {
@@ -87,47 +87,41 @@ namespace LabelServiceConnector
             }
         }
 
-        private List<ShippingOrder> ParseCSV(string text)
+        private ShippingOrder ParseCSV(string text)
         {
             var fieldSep = Configuration.Config["CsvFieldSeparator"] ?? ";";
-
+            var keyVals = new Dictionary<string, string>();
+            
             var rows = text.Split(Environment.NewLine);
             var header = rows[0].Split(fieldSep);
-            var orders = new List<ShippingOrder>();
-            var inconsistentRows = false;
+            var values = rows[1].Split(fieldSep);
 
-            foreach (var row in rows.Skip(1).Where(str => !string.IsNullOrEmpty(str)))
-            {
-                var keyVals = new Dictionary<string, string>();
-
-                var values = row.Split(fieldSep);
-
-                if (values.Length != header.Length)
-                {
-                    inconsistentRows = true;
-                }
-
-                for (int i = 0; i < header.Length; i++)
-                {
-                    var value = values[i] ?? string.Empty;
-
-                    if (string.IsNullOrEmpty(value))
-                    {
-                        continue;
-                    }
-
-                    keyVals.Add(header[i], value);
-                }
-
-                orders.Add(new ShippingOrder { Fields = keyVals });
-            }
-
-            if (inconsistentRows)
+            if (values.Length != header.Length)
             {
                 _logger.LogWarning("One or more records in the file did not have the expected number of fields, your label might be missing data");
             }
 
-            return orders;
+            for (int i = 0; i < header.Length; i++)
+            {
+                var value = values[i] ?? string.Empty;
+
+                if (string.IsNullOrEmpty(value))
+                {
+                    continue;
+                }
+
+                keyVals.Add(header[i], value);
+            }
+
+            var order = new ShippingOrder()
+            {
+                Fields = keyVals,
+                Quantity = rows.Skip(1)
+                               .Where(str => !string.IsNullOrEmpty(str))
+                               .Count()
+            };
+            
+            return order;
         }
     }
 }

@@ -14,9 +14,9 @@ namespace LabelServiceConnector.WebApi
             _client = new SendCloudClient(apiKey, secret);
         }
 
-        public Task<Parcel<Country>[]> CreateParcel(List<CreateParcel> createParcels)
+        public Task<Parcel<Country>[]> CreateParcels(CreateParcel parcel)
         {
-            return _client.Parcels.BulkCreate(createParcels.ToArray());
+            return _client.Parcels.BulkCreate(new CreateParcel[] { parcel });
         }
 
         public Task<Label> CreateLabel(int[] parcelId)
