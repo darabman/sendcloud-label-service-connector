@@ -4,12 +4,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.IO;
 using LabelServiceConnector.WebApi;
-using KeyEncryptorLib;
 using SendCloudApi.Net.Models;
 using System.Linq;
 using Newtonsoft.Json;
 using System.Collections.Generic;
-using Microsoft.Extensions.Configuration;
 using System.Globalization;
 using System.Diagnostics;
 using Microsoft.Win32;
@@ -57,7 +55,7 @@ namespace LabelServiceConnector
             IWebClient webClient = (ep == "None")
                 ? new EmptyWebClient()
                 : new SendCloudWebClient(ep, key, secret);
-            
+
             //List of shipping methods won't change between jobs so retrieve only once
             ShippingMethod[] shippingMethods;
 
@@ -71,7 +69,7 @@ namespace LabelServiceConnector
                 _logger.LogDebug($"'{ex}' {ex.Message}");
 
                 return;
-            }            
+            }
 
             #endregion // Configure API
 
@@ -83,32 +81,33 @@ namespace LabelServiceConnector
 
                 if (job == null)
                 {
-                    _logger.LogWarning("Job queue returned null");                    
+                    _logger.LogWarning("Job queue returned null");
                     break;
                 }
 
-                _logger.LogInformation($"Processing job '{job.ShippingOrder.Id}'");
+                _logger.LogInformation($"Processing job '{job.Id}'");
                 job.Status = Models.JobStatus.Fetching;
 
-                //Build a new request from the shipping order's CSV fields
-                CreateParcel request;
+                CreateParcel parcelRequest;
+                var badMethodString = string.Empty;
 
                 try
                 {
+                    //Build a new request from the shipping order's CSV fields
                     var jsonFields = JsonConvert.SerializeObject(job.ShippingOrder.Fields);
-                    request = SendCloudApi.Net.Helpers.JsonHelper.Deserialize<CreateParcel>(jsonFields, "");
+                    parcelRequest = SendCloudApi.Net.Helpers.JsonHelper.Deserialize<CreateParcel>(jsonFields, "");
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError($"Could not transform job '{job.ShippingOrder.Id}' into a valid request, skipping..");
+                    _logger.LogError($"Could not transform job '{job.Id}' into a valid request, skipping..");
                     _logger.LogDebug($"'{ex}' {ex.Message}");
 
-                    continue;
+                    break;
                 }
 
                 //Match shipping order data to appropriate Shipping Method
                 var methodString = ConstructShippingMethodString(shippingMethods, job.ShippingOrder.Fields);
-                
+
                 var methodId = shippingMethods
                     .Where(m => m.Name == methodString)
                     .Select(m => m.Id)
@@ -116,41 +115,52 @@ namespace LabelServiceConnector
 
                 if (methodId == -1)
                 {
-                    _logger.LogError($"Unable to find a shipping method named '{methodString}', " 
-                        + "please check the shipping order parameters");
+                    _logger.LogError($"Found an unknown shipping method '{badMethodString}', "
+                                    + "please check the shipping order parameters");
 
                     continue;
                 }
 
                 _logger.LogInformation($"Creating parcel with Shipping Method '{methodString}' ID [{methodId}] ");
 
-                request.RequestLabel = true;
-                request.ShippingMethod = methodId;
+                parcelRequest.RequestLabel = true;
+                parcelRequest.ShippingMethod = methodId;
+                parcelRequest.ColloCount 
+                    = parcelRequest.Quantity 
+                    = job.ShippingOrder.Quantity;
 
-                //Call the label provider and save the resulting PDF
-                string pdfOutputPath = string.Empty;
-
+                //Call the label provider and save the resulting PDF(s)
+                var pdfOutputPaths = new List<string>();
+                Parcel<Country>[] parcels;
                 try
                 {
-                    var parcel = webClient.CreateParcel(request).Result;
+                    parcels = webClient.CreateParcels(parcelRequest).Result;
 
-                    job.ShippingOrder.TrackingNumber = parcel.TrackingNumber;
+                    job.ShippingOrder.TrackingNumber = parcels[0].TrackingNumber;
 
-                    _logger.LogInformation($"Created parcel '{parcel.Id}' with tracking number '{parcel.TrackingNumber}'");
-                    _logger.LogInformation($"Fetching label from '{parcel.Label.LabelPrinter}'");
+                    foreach (var parcel in parcels)
+                    {
+                        _logger.LogInformation($"Created parcel '{parcel.Id}' with tracking number '{parcel.TrackingNumber}'");
+                        _logger.LogInformation($"Fetching label from '{parcel.Label.LabelPrinter}'");
 
-                    var pdfBytes = webClient.DownloadLabel(parcel.Label.LabelPrinter).Result;
+                        var pdfBytes = webClient.DownloadLabel(parcel.Label.LabelPrinter).Result;
 
-                    var outDir = Directory.CreateDirectory(Configuration.Config["PdfOutputDir"] ?? "./");
-                    pdfOutputPath = $"{outDir}{parcel.Id}.pdf";
+                        var outDir = Directory.CreateDirectory(Configuration.Config["PdfOutputDir"] ?? "./").FullName;
+                        var pdfOutputPath = $"{outDir}{parcel.Id}.pdf";
 
-                    _logger.LogInformation($"Saving label to '{pdfOutputPath}'");
+                        _logger.LogInformation($"Saving label to '{pdfOutputPath}'");
 
-                    File.WriteAllBytes(pdfOutputPath, pdfBytes);
+                        using (var fw = File.OpenWrite(pdfOutputPath))
+                        {
+                            fw.Write(pdfBytes);
+                        }
+
+                        pdfOutputPaths.Add(pdfOutputPath);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError($"Unable to retrieve label! '{ex}': {ex.Message}");
+                    _logger.LogError($"Unable to retrieve label(s)! '{ex}': {ex.Message}");
 
                     continue;
                 }
@@ -162,7 +172,7 @@ namespace LabelServiceConnector
                 var outputDir = Configuration.Config["CsvOutputDir"] ?? "./";
                 var fieldSep = Configuration.Config["CsvFieldSeparator"] ?? ";";
 
-                var csvOut = Directory.CreateDirectory(outputDir) + job.ShippingOrder.Id + ".csv";
+                var csvOut = Directory.CreateDirectory(outputDir) + job.Id + ".csv";
 
                 _logger.LogInformation($"Saving updated shipping order to '{csvOut}'");
 
@@ -178,21 +188,24 @@ namespace LabelServiceConnector
                         fw.Write("tracking_number");
                     }
 
-                    fw.Write(Environment.NewLine);
+                    foreach (var parcel in parcels)
+                    {
+                        fw.Write(Environment.NewLine);
 
-                    foreach (var value in job.ShippingOrder.Fields.Values)
-                    {
-                        fw.Write(value + fieldSep);
-                    }
+                        foreach (var value in job.ShippingOrder.Fields.Values)
+                        {
+                            fw.Write(value + fieldSep);
+                        }
 
-                    if (!job.ShippingOrder.Fields.ContainsKey("tracking_number"))
-                    {
-                        fw.Write(job.ShippingOrder.TrackingNumber);
+                        if (!job.ShippingOrder.Fields.ContainsKey("tracking_number"))
+                        {
+                            fw.Write(parcel.TrackingNumber);
+                        }
+                        else
+                        {
+                            job.ShippingOrder.Fields["tracking_number"] = parcel.TrackingNumber;
+                        }
                     }
-                    else
-                    {
-                        job.ShippingOrder.Fields["tracking_number"] = job.ShippingOrder.TrackingNumber;
-                    }                        
                 }
 
                 #endregion // Write Back Tracking Number
@@ -200,46 +213,53 @@ namespace LabelServiceConnector
                 #region Print Label
 
                 //Launch an installed printing app from command line, assuming Acrobat Reader
-                var keyString = Configuration.Config["PrinterAppRegistryKey"] ??
-                    @"SOFTWARE\Microsoft\Windows\CurrentVersion" +
-                    @"\App Paths\Acrobat.exe";
+                var keyString = Configuration.Config["PrinterAppLocation"] ??
+                    Registry.LocalMachine?.OpenSubKey(
+                        @"SOFTWARE\Microsoft\Windows\CurrentVersion" +
+                        @"\App Paths\Acrobat.exe")?
+                    .GetValue("")?
+                    .ToString();
                 var argString = Configuration.Config["PrinterAppArgumentString"] ?? "/h /t \"{0}\" \"{1}\"";
                 var printerName = Configuration.Config["PrinterName"];
+                bool.TryParse(Configuration.Config["WaitOnPrinterApp"] ?? "false", out bool block);
 
-                var acrobatKey = Registry.LocalMachine.OpenSubKey(keyString);
 
-                if (acrobatKey == null)
+                if (!File.Exists(keyString ?? ""))
                 {
                     _logger.LogWarning("Path to printer application was not recognised. Skipping printing..");
-                    _logger.LogDebug($"PrinterAppRegistryKey: '{keyString}'");
+                    _logger.LogDebug($"PrinterAppLocation: '{keyString}'");
                 }
                 else
                 {
-                    try
-                    {   
-                        var proc = Process.Start(
-                           fileName: $"{acrobatKey.GetValue("")}",
-                           arguments: string.Format(argString, pdfOutputPath, printerName));
-
-                        _logger.LogInformation($"Printing '{pdfOutputPath}'");
-
-                        proc.WaitForExit();
-
-                        if (proc.ExitCode != 0)
-                        {
-                            throw new SystemException($"Application '{acrobatKey.GetValue("")}' returned exit code '{proc.ExitCode}'");
-                        }
-                    }
-                    catch (Exception ex)
+                    foreach (var path in pdfOutputPaths)
                     {
-                        _logger.LogWarning("Couldn't execute printer application. Skipping printing..");
-                        _logger.LogDebug($"'{ex}': {ex.Message}");
+                        try
+                        {
+                            var args = string.Format(argString, path, printerName);
+
+                            _logger.LogInformation($"Printing '{path}'");
+                            _logger.LogDebug($"with command: {keyString} {args}");
+
+                            var proc = Process.Start(
+                                fileName: $"{keyString}",
+                                arguments: args);
+
+                            if (block)
+                            {
+                                proc.WaitForExit();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning("Couldn't execute printer application. Skipping printing..");
+                            _logger.LogDebug($"'{ex}': {ex.Message}");
+                        }
                     }
                 }
 
                 #endregion // Print Label
 
-                _logger.LogDebug($"Finished processing job '{job.ShippingOrder.Id}'");
+                _logger.LogDebug($"Finished processing job '{job.Id}'");
 
             } while (JobQueue.JobReady);
 
@@ -266,13 +286,13 @@ namespace LabelServiceConnector
             _logger.LogDebug($"Shipping method is '{mode}' for parcel of weight '{weight}'");
 
             var mapping = Configuration.FieldMapping.GetSection(mode);
-            
+
             var methodString = mapping["MethodString"];
             var ranges = mapping
                 .GetSection("WeightRanges")
                 .GetChildren()
                 .Select(w => new Tuple<int, int>(
-                    int.Parse(w["min"]), 
+                    int.Parse(w["min"]),
                     int.Parse(w["max"])
                     ));
 

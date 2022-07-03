@@ -6,7 +6,6 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Linq;
 using System.Text;
 
 namespace LabelServiceConnector
@@ -62,14 +61,16 @@ namespace LabelServiceConnector
             {
                 try
                 {
-                    var so = new ShippingOrder(file);
+                    ShippingOrder order;
 
                     using (var fileText = new StreamReader(file.FullName, fileEncoding))
                     {
-                        so.Fields = ParseCSV(fileText.ReadToEnd());
+                        order = ParseCSV(fileText.ReadToEnd());
                     }
 
-                    JobQueue.AddJob(so);
+                    _logger.LogInformation($"'{file.Name}' contains {order.Quantity} parcel(s)");
+
+                    JobQueue.AddJob(new Job(order, file));
                 }
                 catch (Exception ex)
                 {
@@ -86,21 +87,19 @@ namespace LabelServiceConnector
             }
         }
 
-        private Dictionary<string, string> ParseCSV(string text)
+        private ShippingOrder ParseCSV(string text)
         {
             var fieldSep = Configuration.Config["CsvFieldSeparator"] ?? ";";
-
+            var keyVals = new Dictionary<string, string>();
+            
             var rows = text.Split(Environment.NewLine);
             var header = rows[0].Split(fieldSep);
+            var values = rows[1].Split(fieldSep);
 
-            //Flatten remaining rows to permit newlines in the values
-            var values = new string(rows
-                .Skip(1)
-                .SelectMany(s => s + " ")
-                .ToArray())
-                .Split(fieldSep);
-
-            var kv = new Dictionary<string, string>();
+            if (values.Length != header.Length)
+            {
+                _logger.LogWarning("One or more records in the file did not have the expected number of fields, your label might be missing data");
+            }
 
             for (int i = 0; i < header.Length; i++)
             {
@@ -111,10 +110,18 @@ namespace LabelServiceConnector
                     continue;
                 }
 
-                kv.Add(header[i], value);
+                keyVals.Add(header[i], value);
             }
 
-            return kv;
+            var order = new ShippingOrder()
+            {
+                Fields = keyVals,
+                Quantity = rows.Skip(1)
+                               .Where(str => !string.IsNullOrEmpty(str))
+                               .Count()
+            };
+            
+            return order;
         }
     }
 }

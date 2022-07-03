@@ -1,23 +1,26 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.IO;
 
 namespace LabelServiceConnector.Models
 {
     public class Job
     {
-        public ShippingOrder ShippingOrder { get; set; }
+        public ShippingOrder ShippingOrder { get; }
 
-        public DateTime Touched { get; private set; }
+        public DateTime Touched { get; }
 
         public JobStatus Status { get; set; }
 
-        public Job(ShippingOrder shippingOrder)
+        public FileInfo SourceFile { get; }
+
+        public string Id => SourceFile.Name.Split('.')[0];
+
+        public Job(ShippingOrder shippingOrders, FileInfo sourceFile)
         {
             Touched = DateTime.Now;
-            ShippingOrder = shippingOrder;
+            ShippingOrder = shippingOrders;
+            SourceFile = sourceFile;
         }
     }
 }
