@@ -1,5 +1,4 @@
-﻿using SendCloudApi.Net.Helpers;
-using System.Runtime.Serialization;
+﻿using System.Runtime.Serialization;
 
 namespace SendCloudApi.Net.Models
 {

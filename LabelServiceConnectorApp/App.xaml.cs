@@ -2,6 +2,7 @@
 using Serilog;
 using System.Threading;
 using System.Windows;
+using Forms = System.Windows.Forms;
 
 namespace LabelServiceConnector
 {
@@ -14,19 +15,22 @@ namespace LabelServiceConnector
 
         private CancellationToken _cancellationToken;
 
+        private readonly Forms.NotifyIcon _notifyIcon;
+
         public App()
         {
             _logger = ConfigureLogger().CreateLogger("");
             _cancellationToken = new CancellationToken();
+            _notifyIcon = new Forms.NotifyIcon();
         }
 
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
 
-            _logger.LogInformation(ResourceAssembly.GetName().Name + " started");
+            BuildNotifyIcon();
 
-            var notify = new System.Windows.Forms.NotifyIcon();
+            _logger.LogInformation(ResourceAssembly.GetName().Name + " started");
 
             new Loader(_logger, _cancellationToken).Run();
             new Labeller(_logger, _cancellationToken);
@@ -35,6 +39,8 @@ namespace LabelServiceConnector
         protected override void OnExit(ExitEventArgs e)
         {
             _logger.LogInformation(ResourceAssembly.GetName().Name + " exited with code " + e.ApplicationExitCode);
+
+            _notifyIcon.Dispose();
 
             base.OnExit(e);
         }
