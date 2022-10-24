@@ -1,8 +1,6 @@
 ﻿using SendCloudApi.Net.Models;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace LabelServiceConnector.WebApi
@@ -14,7 +12,7 @@ namespace LabelServiceConnector.WebApi
             throw new NotImplementedException();
         }
 
-        public Task<Parcel<Country>> CreateParcel(CreateParcel createParcel)
+        public Task<Parcel<Country>[]> CreateParcels(CreateParcel parcel)
         {
             throw new NotImplementedException();
         }

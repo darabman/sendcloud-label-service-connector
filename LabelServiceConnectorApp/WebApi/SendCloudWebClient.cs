@@ -1,8 +1,5 @@
 ﻿using SendCloudApi.Net.Models;
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using SendCloudApi.Net;
 
@@ -17,9 +14,9 @@ namespace LabelServiceConnector.WebApi
             _client = new SendCloudClient(apiKey, secret);
         }
 
-        public Task<Parcel<Country>> CreateParcel(CreateParcel createParcel)
+        public Task<Parcel<Country>[]> CreateParcels(CreateParcel parcel)
         {
-            return _client.Parcels.Create(createParcel);
+            return _client.Parcels.BulkCreate(new CreateParcel[] { parcel });
         }
 
         public Task<Label> CreateLabel(int[] parcelId)

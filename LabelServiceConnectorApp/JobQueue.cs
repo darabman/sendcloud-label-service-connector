@@ -1,9 +1,5 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using LabelServiceConnector.Models;
 
 namespace LabelServiceConnector
@@ -16,9 +12,9 @@ namespace LabelServiceConnector
 
         public static bool JobReady => _queue.Count > 0;
 
-        public static void AddJob(ShippingOrder shippingOrder)
+        public static void AddJob(Job job)
         {
-            _queue.Enqueue(new Job(shippingOrder));
+            _queue.Enqueue(job);
 
             JobAdded?.Invoke(null, EventArgs.Empty);
         }

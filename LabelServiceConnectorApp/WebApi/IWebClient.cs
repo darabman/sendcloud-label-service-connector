@@ -6,7 +6,7 @@ namespace LabelServiceConnector.WebApi
 {
     public interface IWebClient
     {
-        public Task<Parcel<Country>> CreateParcel(CreateParcel createParcel);
+        public Task<Parcel<Country>[]> CreateParcels(CreateParcel createParcel);
 
         public Task<Label> CreateLabel(int[] parcelId);
 
