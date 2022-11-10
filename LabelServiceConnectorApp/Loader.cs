@@ -16,6 +16,8 @@ namespace LabelServiceConnector
 
         private ILogger _logger;
 
+        //public event Action 
+            
         public Loader(ILogger logger, CancellationToken cancel)
         {
             _cancel = cancel;           

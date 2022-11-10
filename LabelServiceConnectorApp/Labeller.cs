@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Diagnostics;
 using Microsoft.Win32;
+using Microsoft.Extensions.Configuration;
 
 namespace LabelServiceConnector
 {
@@ -70,6 +71,8 @@ namespace LabelServiceConnector
 
                 return;
             }
+
+
 
             #endregion // Configure API
 
@@ -171,6 +174,7 @@ namespace LabelServiceConnector
 
                 var outputDir = Configuration.Config["CsvOutputDir"] ?? "./";
                 var fieldSep = Configuration.Config["CsvFieldSeparator"] ?? ";";
+                var dateFormat = Configuration.Config["ShipmentDateFormat"] ?? "dd.MM.yyyy HH:mm:ss";
 
                 var csvOut = Directory.CreateDirectory(outputDir) + job.Id + ".csv";
 
@@ -178,33 +182,52 @@ namespace LabelServiceConnector
 
                 using (var fw = File.CreateText(csvOut))
                 {
-                    foreach (var header in job.ShippingOrder.Fields.Keys)
+                    job.ShippingOrder.Fields.Add("shipment_date_time", DateTime.Now.ToString(dateFormat));
+
+                    if (!job.ShippingOrder.Fields.ContainsKey("transmission_error"))
                     {
-                        fw.Write(header + fieldSep);
+                        job.ShippingOrder.Fields.Add("transmission_error", string.Empty);
                     }
 
                     if (!job.ShippingOrder.Fields.ContainsKey("tracking_number"))
                     {
-                        fw.Write("tracking_number");
+                        job.ShippingOrder.Fields.Add("tracking_number", string.Empty);
+                    }
+
+                    //select keys
+                    var keyFilter = Configuration.Config.GetSection("OutputFields").Get<string[]>();
+
+                    if (keyFilter.Length == 0)
+                    {
+                        keyFilter = new string[]
+                        {
+                            "id",
+                            "mode_of_shipment",
+                            "weight",
+                            "tracking_number",
+                            "shipment_date_time",
+                            "transmission_error"
+                        };
+                    }
+
+                    var filteredKeyVals = job.ShippingOrder.Fields.Keys.Intersect(keyFilter)
+                              .ToDictionary(t => t, t => job.ShippingOrder.Fields[t]);
+
+                    foreach (var header in filteredKeyVals.Keys)
+                    {
+                        fw.Write(header + fieldSep);
                     }
 
                     foreach (var parcel in parcels)
                     {
                         fw.Write(Environment.NewLine);
 
-                        foreach (var value in job.ShippingOrder.Fields.Values)
+                        if (filteredKeyVals.ContainsKey("tracking_number"))
                         {
-                            fw.Write(value + fieldSep);
+                            filteredKeyVals["tracking_number"] = parcel.TrackingNumber;
                         }
 
-                        if (!job.ShippingOrder.Fields.ContainsKey("tracking_number"))
-                        {
-                            fw.Write(parcel.TrackingNumber);
-                        }
-                        else
-                        {
-                            job.ShippingOrder.Fields["tracking_number"] = parcel.TrackingNumber;
-                        }
+                        fw.Write(string.Join(fieldSep, filteredKeyVals.Values));
                     }
                 }
 
@@ -291,16 +314,16 @@ namespace LabelServiceConnector
             var ranges = mapping
                 .GetSection("WeightRanges")
                 .GetChildren()
-                .Select(w => new Tuple<int, int>(
-                    int.Parse(w["min"]),
-                    int.Parse(w["max"])
+                .Select(w => new Tuple<float, float>(
+                    float.Parse(w["min"]),
+                    float.Parse(w["max"])
                     ));
 
             //Select weight category by highest
             var range = ranges
-                .Where(r => weight >= r.Item1 && weight < r.Item2)
+                .Where(r => weight > r.Item1 && weight <= r.Item2)
                 .OrderByDescending(r => r.Item2)
-                .FirstOrDefault(new Tuple<int, int>(0, 100));
+                .FirstOrDefault(new Tuple<float, float>(0, 100));
 
             if (range != default)
             {

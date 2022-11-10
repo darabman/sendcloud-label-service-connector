@@ -2,6 +2,7 @@
 using System.Windows;
 using Forms = System.Windows.Forms;
 using System.Drawing;
+using System.Collections.Generic;
 
 namespace LabelServiceConnector
 {

@@ -24,6 +24,17 @@ namespace LabelServiceConnector
             _notifyIcon = new Forms.NotifyIcon();
         }
 
+        private ILoggerFactory ConfigureLogger()
+        {
+            return LoggerFactory.Create(builder =>
+            {
+                var config = new LoggerConfiguration()
+                .ReadFrom.Configuration(Configuration.Logging);
+
+                builder.AddSerilog(config.CreateLogger(), dispose: true);
+            });
+        }
+
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
@@ -36,6 +47,8 @@ namespace LabelServiceConnector
             new Labeller(_logger, _cancellationToken);
         }
 
+
+
         protected override void OnExit(ExitEventArgs e)
         {
             _logger.LogInformation(ResourceAssembly.GetName().Name + " exited with code " + e.ApplicationExitCode);
@@ -43,17 +56,6 @@ namespace LabelServiceConnector
             _notifyIcon.Dispose();
 
             base.OnExit(e);
-        }
-
-        private ILoggerFactory ConfigureLogger()
-        {
-            return LoggerFactory.Create(builder =>
-            {
-                var config = new LoggerConfiguration()
-                .ReadFrom.Configuration(Configuration.Logging);
-                
-                builder.AddSerilog(config.CreateLogger(), dispose: true);
-            });
         }
     }
 }
