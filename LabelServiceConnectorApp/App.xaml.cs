@@ -45,6 +45,9 @@ namespace LabelServiceConnector
 
             new Loader(_logger, _cancellationToken).Run();
             new Labeller(_logger, _cancellationToken);
+
+
+
         }
 
 
