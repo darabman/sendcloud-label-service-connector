@@ -3,7 +3,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.IO;
-using LabelServiceConnector.WebApi;
 using SendCloudApi.Net.Models;
 using System.Linq;
 using Newtonsoft.Json;
@@ -12,6 +11,9 @@ using System.Globalization;
 using System.Diagnostics;
 using Microsoft.Win32;
 using Microsoft.Extensions.Configuration;
+using LabelServiceConnector.Lib.Models;
+using LabelServiceConnector.Lib.Web;
+using LabelServiceConnector.Lib.Data;
 
 namespace LabelServiceConnector
 {
@@ -89,7 +91,7 @@ namespace LabelServiceConnector
                 }
 
                 _logger.LogInformation($"Processing job '{job.Id}'");
-                job.Status = Models.JobStatus.Fetching;
+                job.Status = JobStatus.Fetching;
 
                 CreateParcel parcelRequest;
                 var badMethodString = string.Empty;
@@ -144,6 +146,20 @@ namespace LabelServiceConnector
                     foreach (var parcel in parcels)
                     {
                         _logger.LogInformation($"Created parcel '{parcel.Id}' with tracking number '{parcel.TrackingNumber}'");
+                        using (var archive = new ArchiveRecordContext())
+                        {
+                            var record = new ParcelRecordEntity()
+                            { 
+                                Id = parcel.Id,
+                                TrackingNumber = parcel.TrackingNumber,
+                                ShipmentDate = DateTime.Now 
+                            };
+
+                            archive.ParcelRecords.Add(record);
+
+                            archive.SaveChanges();
+                        }
+                        
                         _logger.LogInformation($"Fetching label from '{parcel.Label.LabelPrinter}'");
 
                         var pdfBytes = webClient.DownloadLabel(parcel.Label.LabelPrinter).Result;
@@ -183,6 +199,11 @@ namespace LabelServiceConnector
                 using (var fw = File.CreateText(csvOut))
                 {
                     job.ShippingOrder.Fields.Add("shipment_date_time", DateTime.Now.ToString(dateFormat));
+
+                    if (!job.ShippingOrder.Fields.ContainsKey("id"))
+                    {
+                        job.ShippingOrder.Fields.Add("id", string.Empty);
+                    }
 
                     if (!job.ShippingOrder.Fields.ContainsKey("transmission_error"))
                     {

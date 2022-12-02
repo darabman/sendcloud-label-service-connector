@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using SendCloudApi.Net;
 
-namespace LabelServiceConnector.WebApi
+namespace LabelServiceConnector.Lib.Web
 {
     public class SendCloudWebClient : IWebClient
     {
@@ -33,6 +33,16 @@ namespace LabelServiceConnector.WebApi
         public Task<ShippingMethod[]> GetShippingMethods()
         {
             return _client.ShippingMethods.Get();
+        }
+
+        public Task<Parcel<Country>[]> GetParcels()
+        {
+            return _client.Parcels.Get();
+        }
+
+        public Task<Parcel<Country>[]> GetParcels(ICollection<int> ids)
+        {
+            return _client.Parcels.Get(ids: ids);
         }
     }
 }

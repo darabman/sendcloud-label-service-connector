@@ -3,9 +3,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace LabelServiceConnector.WebApi
+namespace LabelServiceConnector.Lib.Web
 {
-    internal class EmptyWebClient : IWebClient
+    public class EmptyWebClient : IWebClient
     {
         public Task<Label> CreateLabel(int[] parcelId)
         {
@@ -18,6 +18,16 @@ namespace LabelServiceConnector.WebApi
         }
 
         public Task<byte[]> DownloadLabel(string url)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<Parcel<Country>[]> GetParcels()
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<Parcel<Country>[]> GetParcels(ICollection<int> ids)
         {
             throw new NotImplementedException();
         }

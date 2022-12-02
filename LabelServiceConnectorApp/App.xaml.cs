@@ -43,14 +43,11 @@ namespace LabelServiceConnector
 
             _logger.LogInformation(ResourceAssembly.GetName().Name + " started");
 
-            new Loader(_logger, _cancellationToken).Run();
             new Labeller(_logger, _cancellationToken);
 
-
-
+            new Loader(_logger, _cancellationToken).Start();
+            new Archiver(_logger, _cancellationToken).Start();
         }
-
-
 
         protected override void OnExit(ExitEventArgs e)
         {

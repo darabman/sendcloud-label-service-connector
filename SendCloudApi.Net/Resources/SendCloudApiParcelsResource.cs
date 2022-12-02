@@ -33,7 +33,7 @@ namespace SendCloudApi.Net.Resources
             return apiResponse.Data;
         }
 
-        public async Task<Parcel<Country>[]> Get(int? limit = null, int? offset = null, int? parcelStatus = null, string trackingNumber = null, string orderNumber = null, DateTime? updatedAfter = null)
+        public async Task<Parcel<Country>[]> Get(int? limit = null, int? offset = null, int? parcelStatus = null, string trackingNumber = null, string orderNumber = null, DateTime? updatedAfter = null, ICollection<int> ids = null)
         {
             var parameters = new Dictionary<string, string>();
             if (limit.HasValue)
@@ -48,6 +48,13 @@ namespace SendCloudApi.Net.Resources
                 parameters.Add("order_number", orderNumber);
             if (updatedAfter.HasValue)
                 parameters.Add("updated_after", updatedAfter.Value.ToString("yyyy-MM-ddTHH:mm:ss"));
+
+            ids = ids ?? Array.Empty<int>();
+            if (ids.Count > 0)
+            {
+                parameters.Add("ids", string.Join(',', ids));
+            }
+            
             var apiResponse = await Get<Parcel<Country>[]>(parameters: parameters);
             return apiResponse.Data;
         }

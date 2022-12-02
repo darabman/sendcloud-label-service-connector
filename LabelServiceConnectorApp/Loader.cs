@@ -1,4 +1,4 @@
-﻿using LabelServiceConnector.Models;
+﻿using LabelServiceConnector.Lib.Models;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -24,7 +24,7 @@ namespace LabelServiceConnector
             _logger = logger;
         }
 
-        public void Run()
+        public void Start()
         {
             new Task(() =>
             {

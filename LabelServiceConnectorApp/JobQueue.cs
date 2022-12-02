@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using LabelServiceConnector.Models;
+using LabelServiceConnector.Lib.Models;
 
 namespace LabelServiceConnector
 {

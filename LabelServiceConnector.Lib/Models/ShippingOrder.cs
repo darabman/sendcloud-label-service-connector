@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace LabelServiceConnector.Models
+namespace LabelServiceConnector.Lib.Models
 {
     public class ShippingOrder
     {
