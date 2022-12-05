@@ -15,7 +15,7 @@ using LabelServiceConnector.Lib.Models;
 using LabelServiceConnector.Lib.Web;
 using LabelServiceConnector.Lib.Data;
 
-namespace LabelServiceConnector
+namespace LabelServiceConnector.Agents
 {
     public class Labeller
     {
@@ -55,7 +55,7 @@ namespace LabelServiceConnector
                 $"Key '{key}', " +
                 $"Secret '{secret[0] + new string('*', secret.Length - 2) + secret[^1]}'");
 
-            IWebClient webClient = (ep == "None")
+            IWebClient webClient = ep == "None"
                 ? new EmptyWebClient()
                 : new SendCloudWebClient(ep, key, secret);
 
@@ -73,8 +73,6 @@ namespace LabelServiceConnector
 
                 return;
             }
-
-
 
             #endregion // Configure API
 
@@ -130,8 +128,8 @@ namespace LabelServiceConnector
 
                 parcelRequest.RequestLabel = true;
                 parcelRequest.ShippingMethod = methodId;
-                parcelRequest.ColloCount 
-                    = parcelRequest.Quantity 
+                parcelRequest.ColloCount
+                    = parcelRequest.Quantity
                     = job.ShippingOrder.Quantity;
 
                 //Call the label provider and save the resulting PDF(s)
@@ -149,17 +147,20 @@ namespace LabelServiceConnector
                         using (var archive = new ArchiveRecordContext())
                         {
                             var record = new ParcelRecordEntity()
-                            { 
+                            {
                                 Id = parcel.Id,
                                 TrackingNumber = parcel.TrackingNumber,
-                                ShipmentDate = DateTime.Now 
+                                ShipmentDate = DateTime.Now
                             };
 
                             archive.ParcelRecords.Add(record);
 
                             archive.SaveChanges();
+
+                            _logger.LogInformation($"Parcel '{parcel.Id}' saved locally for archiving after " +
+                                $"{parcel.DateCreated.AddDays(ArchiveRecordContext.ArchiveAfterDays):f}");
                         }
-                        
+
                         _logger.LogInformation($"Fetching label from '{parcel.Label.LabelPrinter}'");
 
                         var pdfBytes = webClient.DownloadLabel(parcel.Label.LabelPrinter).Result;

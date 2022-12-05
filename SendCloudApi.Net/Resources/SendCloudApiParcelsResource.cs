@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using SendCloudApi.Net.Helpers;
 using SendCloudApi.Net.Models;
@@ -54,9 +55,32 @@ namespace SendCloudApi.Net.Resources
             {
                 parameters.Add("ids", string.Join(',', ids));
             }
+
+            PagedResponse<Parcel<Country>[]> response;
+            var data = new List<Parcel<Country>>();
             
-            var apiResponse = await Get<Parcel<Country>[]>(parameters: parameters);
-            return apiResponse.Data;
+            do
+            {
+                response = (PagedResponse<Parcel<Country>[]>)await Get<Parcel<Country>[]>(parameters: parameters);
+                data.AddRange(response.Data);
+
+                if (response.NextPage != null)
+                {
+                    var newParams = response.NextPage.Split('?')[1];
+
+                    parameters.Clear();
+
+                    foreach (var bit in newParams.Split('&'))
+                    {
+                        var name = bit.Split('=')[0];
+                        var value = Uri.UnescapeDataString(bit.Split('=')[1]);
+                        parameters.Add(name, value);
+                    }
+                }
+            }
+            while (response.NextPage != null);
+
+            return data.ToArray();
         }
 
         public async Task<Parcel<Country>> Get(int parcelId)

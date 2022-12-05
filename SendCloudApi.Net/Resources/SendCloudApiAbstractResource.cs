@@ -42,6 +42,7 @@ namespace SendCloudApi.Net.Resources
                 {
                     return await Client.Get<T>($"{HostUrl}{Resource}/{objectId.Value}", Authorization, parameters, SingleResource, DateTimeFormat);
                 }
+
                 return await Client.Get<T>($"{HostUrl}{Resource}", Authorization, parameters, ListResource, DateTimeFormat);
             }
             return new ApiResponse<T>(System.Net.HttpStatusCode.MethodNotAllowed, default(T));

@@ -32,6 +32,21 @@ namespace LabelServiceConnector.Lib.Web
             throw new NotImplementedException();
         }
 
+        public Task<Parcel<Country>[]> GetParcels(string status)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<Parcel<Country>[]> GetParcels(int status)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<Status[]> GetParcelStatuses()
+        {
+            throw new NotImplementedException();
+        }
+
         public Task<ShippingMethod[]> GetShippingMethods()
         {
             throw new NotImplementedException();

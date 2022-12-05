@@ -14,13 +14,22 @@ namespace LabelServiceConnector
             _notifyIcon.Text = "SendCloud Label Service Connector";
 
             _notifyIcon.ContextMenuStrip = new Forms.ContextMenuStrip();
-            _notifyIcon.ContextMenuStrip.MinimumSize = new System.Drawing.Size(100, 0);          
+            _notifyIcon.ContextMenuStrip.MinimumSize = new System.Drawing.Size(100, 0);
+            _notifyIcon.ContextMenuStrip.Items.Add(new Forms.ToolStripButton(
+                "Archive All Delivered Shipments",
+                image: null,
+                OnNotifyArchive));
             _notifyIcon.ContextMenuStrip.Items.Add(new Forms.ToolStripButton(
                 "Close",
                 image: null,
                 OnNotifyClose));
             
             _notifyIcon.Visible = true;
+        }
+
+        private void OnNotifyArchive(object? sender, EventArgs e)
+        {
+            _archiverAgent.DownloadAll();
         }
 
         private void OnNotifyClose(object? sender, EventArgs e)

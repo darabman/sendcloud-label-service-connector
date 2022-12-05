@@ -2,7 +2,7 @@
 using System.Collections.Concurrent;
 using LabelServiceConnector.Lib.Models;
 
-namespace LabelServiceConnector
+namespace LabelServiceConnector.Agents
 {
     public static class JobQueue
     {

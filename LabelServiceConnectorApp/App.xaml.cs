@@ -1,6 +1,8 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using LabelServiceConnector.Agents;
+using Microsoft.Extensions.Logging;
 using Serilog;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using Forms = System.Windows.Forms;
 
@@ -17,11 +19,18 @@ namespace LabelServiceConnector
 
         private readonly Forms.NotifyIcon _notifyIcon;
 
+        private readonly Archiver _archiverAgent;
+        
+        private readonly Loader _loaderAgent;
+
         public App()
         {
             _logger = ConfigureLogger().CreateLogger("");
             _cancellationToken = new CancellationToken();
             _notifyIcon = new Forms.NotifyIcon();
+
+            _archiverAgent = new Archiver(_logger, _cancellationToken);
+            _loaderAgent = new Loader(_logger, _cancellationToken);
         }
 
         private ILoggerFactory ConfigureLogger()
@@ -35,7 +44,7 @@ namespace LabelServiceConnector
             });
         }
 
-        protected override void OnStartup(StartupEventArgs e)
+        protected override async void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
 
@@ -45,8 +54,10 @@ namespace LabelServiceConnector
 
             new Labeller(_logger, _cancellationToken);
 
-            new Loader(_logger, _cancellationToken).Start();
-            new Archiver(_logger, _cancellationToken).Start();
+            _loaderAgent.Start();
+
+            await _archiverAgent.UpdateDeliveredStatusKey();
+            _archiverAgent.Start();
         }
 
         protected override void OnExit(ExitEventArgs e)

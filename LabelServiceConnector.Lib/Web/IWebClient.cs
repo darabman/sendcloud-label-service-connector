@@ -14,7 +14,11 @@ namespace LabelServiceConnector.Lib.Web
 
         public Task<ShippingMethod[]> GetShippingMethods();
 
+        public Task<Status[]> GetParcelStatuses();
+
         public Task<Parcel<Country>[]> GetParcels();
+
+        public Task<Parcel<Country>[]> GetParcels(int status);
 
         public Task<Parcel<Country>[]> GetParcels(ICollection<int> ids);
     }

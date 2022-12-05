@@ -8,7 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Text;
 
-namespace LabelServiceConnector
+namespace LabelServiceConnector.Agents
 {
     internal class Loader
     {
@@ -17,10 +17,10 @@ namespace LabelServiceConnector
         private ILogger _logger;
 
         //public event Action 
-            
+
         public Loader(ILogger logger, CancellationToken cancel)
         {
-            _cancel = cancel;           
+            _cancel = cancel;
             _logger = logger;
         }
 
@@ -54,7 +54,7 @@ namespace LabelServiceConnector
         public void ScanDirectory(DirectoryInfo dir, Encoding fileEncoding)
         {
             var shippingOrders = new List<ShippingOrder>();
-            var files = dir.GetFiles("*.csv").OrderBy(f => f.CreationTime);            
+            var files = dir.GetFiles("*.csv").OrderBy(f => f.CreationTime);
 
             if (files.Any())
                 _logger.LogInformation($"Found {files.Count()} CSV files in '{dir}'");
@@ -93,7 +93,7 @@ namespace LabelServiceConnector
         {
             var fieldSep = Configuration.Config["CsvFieldSeparator"] ?? ";";
             var keyVals = new Dictionary<string, string>();
-            
+
             var rows = text.Split(Environment.NewLine);
             var header = rows[0].Split(fieldSep);
             var values = rows[1].Split(fieldSep);
@@ -122,7 +122,7 @@ namespace LabelServiceConnector
                                .Where(str => !string.IsNullOrEmpty(str))
                                .Count()
             };
-            
+
             return order;
         }
     }
