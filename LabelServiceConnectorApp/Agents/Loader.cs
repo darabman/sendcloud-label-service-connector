@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Text;
+using System.Windows.Forms;
 
 namespace LabelServiceConnector.Agents
 {
@@ -16,12 +17,13 @@ namespace LabelServiceConnector.Agents
 
         private ILogger _logger;
 
-        //public event Action 
+        private Action<ToolTipIcon, string> _notificationMethod;
 
-        public Loader(ILogger logger, CancellationToken cancel)
+        public Loader(ILogger logger, CancellationToken cancel, Action<ToolTipIcon, string> notificationMethod)
         {
             _cancel = cancel;
             _logger = logger;
+            _notificationMethod = notificationMethod;
         }
 
         public void Start()
@@ -59,6 +61,8 @@ namespace LabelServiceConnector.Agents
             if (files.Any())
                 _logger.LogInformation($"Found {files.Count()} CSV files in '{dir}'");
 
+            int count = 0;
+
             foreach (var file in files)
             {
                 try
@@ -73,11 +77,15 @@ namespace LabelServiceConnector.Agents
                     _logger.LogInformation($"'{file.Name}' contains {order.Quantity} parcel(s)");
 
                     JobQueue.AddJob(new Job(order, file));
+
+                    count++;
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning($"Unable to process '{file.Name}', skipping..");
                     _logger.LogDebug($"{ex}: {ex.Message}");
+
+                    _notificationMethod.Invoke(ToolTipIcon.Error, $"Unable to process '{file.Name}', skipping..");
 
                     Directory.CreateDirectory(dir + "/error/");
                     file.CopyTo(dir + "/error/" + file.Name, overwrite: true);
@@ -86,6 +94,11 @@ namespace LabelServiceConnector.Agents
                 {
                     file.Delete();
                 }
+            }
+
+            if (count > 0)
+            {
+                _notificationMethod.Invoke(ToolTipIcon.Info, $"Queued {count} shipping order(s) to be processed");
             }
         }
 

@@ -1,6 +1,7 @@
 ﻿using LabelServiceConnector.Lib.Data;
 using LabelServiceConnector.Lib.Models;
 using LabelServiceConnector.Lib.Web;
+using LabelServiceConnector.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
@@ -13,6 +14,8 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Forms;
+using Timer = System.Threading.Timer;
 
 namespace LabelServiceConnector.Agents
 {
@@ -26,16 +29,18 @@ namespace LabelServiceConnector.Agents
 
         private readonly object _archiveLock = new object();
 
-        
+        private Action<ToolTipIcon, string> _notificationMethod;
 
         public int DeliveredStatusKey { get; private set; }
 
-        public Archiver(ILogger logger, CancellationToken cancel)
+        public Archiver(ILogger logger, CancellationToken cancel, Action<ToolTipIcon, string> notificationMethod)
         {
             _cancel = cancel;
             _logger = logger;
 
             _cancel.Register(OnCancel);
+
+            _notificationMethod = notificationMethod;
 
             _timer = new Timer(OnTimerInterval, null, Timeout.Infinite, ArchiveRecordContext.ArchivePeriodHours * 60 * 60 * 1000);
         }
@@ -49,6 +54,8 @@ namespace LabelServiceConnector.Agents
         {
             _logger.LogInformation("Manually downloading all 'Delivered' shipments..");
 
+            _notificationMethod.Invoke(ToolTipIcon.Info, "Manually downloading all 'Delivered' shipments..");
+
             int updated = 0;
             int added = 0;
 
@@ -61,6 +68,8 @@ namespace LabelServiceConnector.Agents
                 : new SendCloudWebClient(ep, key, secret);
 
             var parcels = await webClient.GetParcels(DeliveredStatusKey);
+
+            int errors = 0;
 
             lock (_archiveLock)
             {
@@ -97,6 +106,8 @@ namespace LabelServiceConnector.Agents
                                 _logger.LogWarning($"Shipment with tracking number '{p.TrackingNumber}' " +
                                     $"was unexpectedly retrieved with '{p.Status.Message}' status, skipping..");
 
+                                errors++;
+
                                 continue;
                             }
 
@@ -106,14 +117,19 @@ namespace LabelServiceConnector.Agents
 
                             archive.Update(record);
 
-                            
-
                             updated++;
                         }
                     }
 
                     archive.SaveChanges();
                 }
+
+                if (errors > 0)
+                {
+                    _notificationMethod.Invoke(ToolTipIcon.Warning, $"Encountered {errors} error(s) while manually downloading parcels");
+                }
+
+                _notificationMethod.Invoke(ToolTipIcon.Info, $"Download finished with {added} record(s) added and {updated} records updated");
 
                 _logger.LogInformation($"Download finished with {added} record(s) added and {updated} records updated");
             }
@@ -140,6 +156,8 @@ namespace LabelServiceConnector.Agents
             }
             catch (Exception ex)
             {
+                _notificationMethod.Invoke(ToolTipIcon.Warning, $"Problem while receiving status information from Sendcloud, using defaults..");
+
                 _logger.LogError($"Unable to retrieve the 'Delivered' status key from label provider, using default ({DeliveredStatusKey})");
                 _logger.LogError($"{ex} - {ex.Message}");
             }
@@ -156,10 +174,14 @@ namespace LabelServiceConnector.Agents
                     int recordsUpdated = await ArchivePass();
 
                     _logger.LogInformation($"{recordsUpdated} shipment(s) archived");
+
+                    _notificationMethod.Invoke(ToolTipIcon.Info, $"Auto-Archived {recordsUpdated} record(s)");
             }
             catch (Exception ex)
             {
-                _logger.LogError($"General fault while trying to archive shipped parcels");
+                _notificationMethod.Invoke(ToolTipIcon.Error, $"Failed to auto-archive parcels, please check logs for more information");
+
+                _logger.LogError($"General fault while trying to auto-archive shipped parcels");
                 _logger.LogDebug(ex.ToString() + $" {ex.Message}");
             }
         }
@@ -197,6 +219,8 @@ namespace LabelServiceConnector.Agents
                         $"Error when retrieving shipped parcels: Expected {records.Count()}, received {parcels.Length}");
                 }
 
+                int errors = 0;
+
                 lock (_archiveLock)
                 {
                     foreach (var p in parcels)
@@ -225,15 +249,23 @@ namespace LabelServiceConnector.Agents
                                                        $"and so has not been archived.");
                                 _logger.LogInformation("Please resolve the shipment with your label provider and then click 'Archive All Delivered Shipments' " +
                                                        "in the application");
+
+                                errors++;
                             }
 
                             archive.Update(record);
                         }
                         catch (Exception ex)
                         {
+                            errors++;
                             _logger.LogError($"Fault while archiving parcel with Tracking Number {p.TrackingNumber} - {ex.Message}");
                         }
                     }
+                }
+
+                if (errors > 0)
+                {
+                    _notificationMethod.Invoke(ToolTipIcon.Warning, $"Encountered {errors} issues(s) while archiving");
                 }
 
                 return archive.SaveChanges();

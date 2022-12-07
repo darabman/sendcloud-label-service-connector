@@ -29,8 +29,8 @@ namespace LabelServiceConnector
             _cancellationToken = new CancellationToken();
             _notifyIcon = new Forms.NotifyIcon();
 
-            _archiverAgent = new Archiver(_logger, _cancellationToken);
-            _loaderAgent = new Loader(_logger, _cancellationToken);
+            _archiverAgent = new Archiver(_logger, _cancellationToken, OnClientNotification);
+            _loaderAgent = new Loader(_logger, _cancellationToken, OnClientNotification);
         }
 
         private ILoggerFactory ConfigureLogger()
@@ -52,7 +52,7 @@ namespace LabelServiceConnector
 
             _logger.LogInformation(ResourceAssembly.GetName().Name + " started");
 
-            new Labeller(_logger, _cancellationToken);
+            new Labeller(_logger, _cancellationToken, OnClientNotification);
 
             _loaderAgent.Start();
 

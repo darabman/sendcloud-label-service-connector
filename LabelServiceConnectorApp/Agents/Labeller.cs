@@ -14,6 +14,9 @@ using Microsoft.Extensions.Configuration;
 using LabelServiceConnector.Lib.Models;
 using LabelServiceConnector.Lib.Web;
 using LabelServiceConnector.Lib.Data;
+using System.Windows.Forms;
+using System.Windows.Controls;
+using SendCloudApi.Net.Exceptions;
 
 namespace LabelServiceConnector.Agents
 {
@@ -25,11 +28,15 @@ namespace LabelServiceConnector.Agents
 
         private CancellationToken _cancel;
 
-        public Labeller(ILogger logger, CancellationToken cancel)
+        private Action<ToolTipIcon, string> _notificationMethod;
+
+        public Labeller(ILogger logger, CancellationToken cancel, Action<ToolTipIcon, string> notificationMethod)
         {
             _cancel = cancel;
             _logger = logger;
             _serviceTask = Task.CompletedTask;
+
+            _notificationMethod = notificationMethod;
 
             JobQueue.JobAdded += Run;
         }
@@ -68,6 +75,8 @@ namespace LabelServiceConnector.Agents
             }
             catch (Exception ex)
             {
+                _notificationMethod.Invoke(ToolTipIcon.Error, "Couldn't get shipping methods from Sendcloud, please check configuration");
+
                 _logger.LogError("Couldn't get shipping methods from Label Provider!");
                 _logger.LogDebug($"'{ex}' {ex.Message}");
 
@@ -91,6 +100,8 @@ namespace LabelServiceConnector.Agents
                 _logger.LogInformation($"Processing job '{job.Id}'");
                 job.Status = JobStatus.Fetching;
 
+                
+
                 CreateParcel parcelRequest;
                 var badMethodString = string.Empty;
 
@@ -102,11 +113,15 @@ namespace LabelServiceConnector.Agents
                 }
                 catch (Exception ex)
                 {
+                    _notificationMethod.Invoke(ToolTipIcon.Warning, $"Could not transform job '{job.Id}' into a valid request, skipping..");
+
                     _logger.LogError($"Could not transform job '{job.Id}' into a valid request, skipping..");
                     _logger.LogDebug($"'{ex}' {ex.Message}");
 
                     break;
                 }
+
+                _notificationMethod.Invoke(ToolTipIcon.Info, $"Processing job '{job.Id}'");
 
                 //Match shipping order data to appropriate Shipping Method
                 var methodString = ConstructShippingMethodString(shippingMethods, job.ShippingOrder.Fields);
@@ -120,6 +135,9 @@ namespace LabelServiceConnector.Agents
                 {
                     _logger.LogError($"Found an unknown shipping method '{badMethodString}', "
                                     + "please check the shipping order parameters");
+
+                    _notificationMethod.Invoke(ToolTipIcon.Error, $"Found an unknown shipping method '{badMethodString}', "
+                                    + "please check the exported shipping order");
 
                     continue;
                 }
@@ -176,11 +194,25 @@ namespace LabelServiceConnector.Agents
                         }
 
                         pdfOutputPaths.Add(pdfOutputPath);
+
+                        _notificationMethod.Invoke(ToolTipIcon.Info, $"Successfully processed job '{job.Id}' into '{parcel.Id}.pdf'");
                     }
                 }
                 catch (Exception ex)
                 {
+                    if (ex is AggregateException agg && agg.InnerException != null)
+                    {
+                        ex = agg.InnerException;
+                    }
+
                     _logger.LogError($"Unable to retrieve label(s)! '{ex}': {ex.Message}");
+
+                    _notificationMethod.Invoke(ToolTipIcon.Warning, $"Error while processing '{job.Id}' ({ex.GetType()})");
+
+                    if (ex is SendCloudException scEx)
+                    {
+                        //Add to UI
+                    }
 
                     continue;
                 }
@@ -200,11 +232,6 @@ namespace LabelServiceConnector.Agents
                 using (var fw = File.CreateText(csvOut))
                 {
                     job.ShippingOrder.Fields.Add("shipment_date_time", DateTime.Now.ToString(dateFormat));
-
-                    if (!job.ShippingOrder.Fields.ContainsKey("id"))
-                    {
-                        job.ShippingOrder.Fields.Add("id", string.Empty);
-                    }
 
                     if (!job.ShippingOrder.Fields.ContainsKey("transmission_error"))
                     {
@@ -234,6 +261,14 @@ namespace LabelServiceConnector.Agents
 
                     var filteredKeyVals = job.ShippingOrder.Fields.Keys.Intersect(keyFilter)
                               .ToDictionary(t => t, t => job.ShippingOrder.Fields[t]);
+
+                    if (keyFilter.Contains("id"))
+                    {
+                        //ID field won't be present in SO fields, and should go first
+                        filteredKeyVals = filteredKeyVals
+                            .Prepend(new KeyValuePair<string, string>("id", job.Id))
+                            .ToDictionary(x => x.Key, x => x.Value);
+                    }
 
                     foreach (var header in filteredKeyVals.Keys)
                     {
@@ -271,6 +306,8 @@ namespace LabelServiceConnector.Agents
 
                 if (!File.Exists(keyString ?? ""))
                 {
+                    _notificationMethod.Invoke(ToolTipIcon.Warning, $"Printing configuration invalid, skipping..");
+
                     _logger.LogWarning("Path to printer application was not recognised. Skipping printing..");
                     _logger.LogDebug($"PrinterAppLocation: '{keyString}'");
                 }
@@ -296,6 +333,8 @@ namespace LabelServiceConnector.Agents
                         }
                         catch (Exception ex)
                         {
+                            _notificationMethod.Invoke(ToolTipIcon.Warning, "Couldn't execute printer application. Skipping printing..");
+
                             _logger.LogWarning("Couldn't execute printer application. Skipping printing..");
                             _logger.LogDebug($"'{ex}': {ex.Message}");
                         }
