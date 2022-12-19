@@ -10,6 +10,10 @@ namespace SendCloudApi.Net
 
         public string RawContent { get; }
 
+        public string? NextPage { get; set; } = null;
+
+        public string? PreviousPage { get; set; } = null;
+
         public ApiResponse(HttpStatusCode statusCode, T data, string rawContent)
         {
             StatusCode = statusCode;

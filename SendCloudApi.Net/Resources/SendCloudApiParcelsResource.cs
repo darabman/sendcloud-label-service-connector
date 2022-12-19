@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using SendCloudApi.Net.Helpers;
 using SendCloudApi.Net.Models;
@@ -33,7 +34,7 @@ namespace SendCloudApi.Net.Resources
             return apiResponse.Data;
         }
 
-        public async Task<Parcel<Country>[]> Get(int? limit = null, int? offset = null, int? parcelStatus = null, string trackingNumber = null, string orderNumber = null, DateTime? updatedAfter = null)
+        public async Task<Parcel<Country>[]> Get(int? limit = null, int? offset = null, int? parcelStatus = null, string trackingNumber = null, string orderNumber = null, DateTime? updatedAfter = null, ICollection<int> ids = null)
         {
             var parameters = new Dictionary<string, string>();
             if (limit.HasValue)
@@ -48,8 +49,38 @@ namespace SendCloudApi.Net.Resources
                 parameters.Add("order_number", orderNumber);
             if (updatedAfter.HasValue)
                 parameters.Add("updated_after", updatedAfter.Value.ToString("yyyy-MM-ddTHH:mm:ss"));
-            var apiResponse = await Get<Parcel<Country>[]>(parameters: parameters);
-            return apiResponse.Data;
+
+            ids = ids ?? Array.Empty<int>();
+            if (ids.Count > 0)
+            {
+                parameters.Add("ids", string.Join(',', ids));
+            }
+
+            PagedResponse<Parcel<Country>[]> response;
+            var data = new List<Parcel<Country>>();
+            
+            do
+            {
+                response = (PagedResponse<Parcel<Country>[]>)await Get<Parcel<Country>[]>(parameters: parameters);
+                data.AddRange(response.Data);
+
+                if (response.NextPage != null)
+                {
+                    var newParams = response.NextPage.Split('?')[1];
+
+                    parameters.Clear();
+
+                    foreach (var bit in newParams.Split('&'))
+                    {
+                        var name = bit.Split('=')[0];
+                        var value = Uri.UnescapeDataString(bit.Split('=')[1]);
+                        parameters.Add(name, value);
+                    }
+                }
+            }
+            while (response.NextPage != null);
+
+            return data.ToArray();
         }
 
         public async Task<Parcel<Country>> Get(int parcelId)

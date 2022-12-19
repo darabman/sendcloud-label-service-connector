@@ -3,7 +3,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.IO;
-using LabelServiceConnector.WebApi;
 using SendCloudApi.Net.Models;
 using System.Linq;
 using Newtonsoft.Json;
@@ -11,8 +10,15 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Diagnostics;
 using Microsoft.Win32;
+using Microsoft.Extensions.Configuration;
+using LabelServiceConnector.Lib.Models;
+using LabelServiceConnector.Lib.Web;
+using LabelServiceConnector.Lib.Data;
+using System.Windows.Forms;
+using System.Windows.Controls;
+using SendCloudApi.Net.Exceptions;
 
-namespace LabelServiceConnector
+namespace LabelServiceConnector.Agents
 {
     public class Labeller
     {
@@ -22,11 +28,15 @@ namespace LabelServiceConnector
 
         private CancellationToken _cancel;
 
-        public Labeller(ILogger logger, CancellationToken cancel)
+        private Action<ToolTipIcon, string> _notificationMethod;
+
+        public Labeller(ILogger logger, CancellationToken cancel, Action<ToolTipIcon, string> notificationMethod)
         {
             _cancel = cancel;
             _logger = logger;
             _serviceTask = Task.CompletedTask;
+
+            _notificationMethod = notificationMethod;
 
             JobQueue.JobAdded += Run;
         }
@@ -52,7 +62,7 @@ namespace LabelServiceConnector
                 $"Key '{key}', " +
                 $"Secret '{secret[0] + new string('*', secret.Length - 2) + secret[^1]}'");
 
-            IWebClient webClient = (ep == "None")
+            IWebClient webClient = ep == "None"
                 ? new EmptyWebClient()
                 : new SendCloudWebClient(ep, key, secret);
 
@@ -65,6 +75,8 @@ namespace LabelServiceConnector
             }
             catch (Exception ex)
             {
+                _notificationMethod.Invoke(ToolTipIcon.Error, "Couldn't get shipping methods from Sendcloud, please check configuration");
+
                 _logger.LogError("Couldn't get shipping methods from Label Provider!");
                 _logger.LogDebug($"'{ex}' {ex.Message}");
 
@@ -86,7 +98,9 @@ namespace LabelServiceConnector
                 }
 
                 _logger.LogInformation($"Processing job '{job.Id}'");
-                job.Status = Models.JobStatus.Fetching;
+                job.Status = JobStatus.Fetching;
+
+                
 
                 CreateParcel parcelRequest;
                 var badMethodString = string.Empty;
@@ -99,11 +113,15 @@ namespace LabelServiceConnector
                 }
                 catch (Exception ex)
                 {
+                    _notificationMethod.Invoke(ToolTipIcon.Warning, $"Could not transform job '{job.Id}' into a valid request, skipping..");
+
                     _logger.LogError($"Could not transform job '{job.Id}' into a valid request, skipping..");
                     _logger.LogDebug($"'{ex}' {ex.Message}");
 
                     break;
                 }
+
+                _notificationMethod.Invoke(ToolTipIcon.Info, $"Processing job '{job.Id}'");
 
                 //Match shipping order data to appropriate Shipping Method
                 var methodString = ConstructShippingMethodString(shippingMethods, job.ShippingOrder.Fields);
@@ -118,6 +136,9 @@ namespace LabelServiceConnector
                     _logger.LogError($"Found an unknown shipping method '{badMethodString}', "
                                     + "please check the shipping order parameters");
 
+                    _notificationMethod.Invoke(ToolTipIcon.Error, $"Found an unknown shipping method '{badMethodString}', "
+                                    + "please check the exported shipping order");
+
                     continue;
                 }
 
@@ -125,8 +146,8 @@ namespace LabelServiceConnector
 
                 parcelRequest.RequestLabel = true;
                 parcelRequest.ShippingMethod = methodId;
-                parcelRequest.ColloCount 
-                    = parcelRequest.Quantity 
+                parcelRequest.ColloCount
+                    = parcelRequest.Quantity
                     = job.ShippingOrder.Quantity;
 
                 //Call the label provider and save the resulting PDF(s)
@@ -141,6 +162,23 @@ namespace LabelServiceConnector
                     foreach (var parcel in parcels)
                     {
                         _logger.LogInformation($"Created parcel '{parcel.Id}' with tracking number '{parcel.TrackingNumber}'");
+                        using (var archive = new ArchiveRecordContext())
+                        {
+                            var record = new ParcelRecordEntity()
+                            {
+                                Id = parcel.Id,
+                                TrackingNumber = parcel.TrackingNumber,
+                                ShipmentDate = DateTime.Now
+                            };
+
+                            archive.ParcelRecords.Add(record);
+
+                            archive.SaveChanges();
+
+                            _logger.LogInformation($"Parcel '{parcel.Id}' saved locally for archiving after " +
+                                $"{parcel.DateCreated.AddDays(ArchiveRecordContext.ArchiveAfterDays):f}");
+                        }
+
                         _logger.LogInformation($"Fetching label from '{parcel.Label.LabelPrinter}'");
 
                         var pdfBytes = webClient.DownloadLabel(parcel.Label.LabelPrinter).Result;
@@ -156,11 +194,25 @@ namespace LabelServiceConnector
                         }
 
                         pdfOutputPaths.Add(pdfOutputPath);
+
+                        _notificationMethod.Invoke(ToolTipIcon.Info, $"Successfully processed job '{job.Id}' into '{parcel.Id}.pdf'");
                     }
                 }
                 catch (Exception ex)
                 {
+                    if (ex is AggregateException agg && agg.InnerException != null)
+                    {
+                        ex = agg.InnerException;
+                    }
+
                     _logger.LogError($"Unable to retrieve label(s)! '{ex}': {ex.Message}");
+
+                    _notificationMethod.Invoke(ToolTipIcon.Warning, $"Error while processing '{job.Id}' ({ex.GetType()})");
+
+                    if (ex is SendCloudException scEx)
+                    {
+                        //Add to UI
+                    }
 
                     continue;
                 }
@@ -171,6 +223,7 @@ namespace LabelServiceConnector
 
                 var outputDir = Configuration.Config["CsvOutputDir"] ?? "./";
                 var fieldSep = Configuration.Config["CsvFieldSeparator"] ?? ";";
+                var dateFormat = Configuration.Config["ShipmentDateFormat"] ?? "dd.MM.yyyy HH:mm:ss";
 
                 var csvOut = Directory.CreateDirectory(outputDir) + job.Id + ".csv";
 
@@ -178,33 +231,60 @@ namespace LabelServiceConnector
 
                 using (var fw = File.CreateText(csvOut))
                 {
-                    foreach (var header in job.ShippingOrder.Fields.Keys)
+                    job.ShippingOrder.Fields.Add("shipment_date_time", DateTime.Now.ToString(dateFormat));
+
+                    if (!job.ShippingOrder.Fields.ContainsKey("transmission_error"))
                     {
-                        fw.Write(header + fieldSep);
+                        job.ShippingOrder.Fields.Add("transmission_error", string.Empty);
                     }
 
                     if (!job.ShippingOrder.Fields.ContainsKey("tracking_number"))
                     {
-                        fw.Write("tracking_number");
+                        job.ShippingOrder.Fields.Add("tracking_number", string.Empty);
+                    }
+
+                    //select keys
+                    var keyFilter = Configuration.Config.GetSection("OutputFields").Get<string[]>();
+
+                    if (keyFilter.Length == 0)
+                    {
+                        keyFilter = new string[]
+                        {
+                            "id",
+                            "mode_of_shipment",
+                            "weight",
+                            "tracking_number",
+                            "shipment_date_time",
+                            "transmission_error"
+                        };
+                    }
+
+                    var filteredKeyVals = job.ShippingOrder.Fields.Keys.Intersect(keyFilter)
+                              .ToDictionary(t => t, t => job.ShippingOrder.Fields[t]);
+
+                    if (keyFilter.Contains("id"))
+                    {
+                        //ID field won't be present in SO fields, and should go first
+                        filteredKeyVals = filteredKeyVals
+                            .Prepend(new KeyValuePair<string, string>("id", job.Id))
+                            .ToDictionary(x => x.Key, x => x.Value);
+                    }
+
+                    foreach (var header in filteredKeyVals.Keys)
+                    {
+                        fw.Write(header + fieldSep);
                     }
 
                     foreach (var parcel in parcels)
                     {
                         fw.Write(Environment.NewLine);
 
-                        foreach (var value in job.ShippingOrder.Fields.Values)
+                        if (filteredKeyVals.ContainsKey("tracking_number"))
                         {
-                            fw.Write(value + fieldSep);
+                            filteredKeyVals["tracking_number"] = parcel.TrackingNumber;
                         }
 
-                        if (!job.ShippingOrder.Fields.ContainsKey("tracking_number"))
-                        {
-                            fw.Write(parcel.TrackingNumber);
-                        }
-                        else
-                        {
-                            job.ShippingOrder.Fields["tracking_number"] = parcel.TrackingNumber;
-                        }
+                        fw.Write(string.Join(fieldSep, filteredKeyVals.Values));
                     }
                 }
 
@@ -226,6 +306,8 @@ namespace LabelServiceConnector
 
                 if (!File.Exists(keyString ?? ""))
                 {
+                    _notificationMethod.Invoke(ToolTipIcon.Warning, $"Printing configuration invalid, skipping..");
+
                     _logger.LogWarning("Path to printer application was not recognised. Skipping printing..");
                     _logger.LogDebug($"PrinterAppLocation: '{keyString}'");
                 }
@@ -251,6 +333,8 @@ namespace LabelServiceConnector
                         }
                         catch (Exception ex)
                         {
+                            _notificationMethod.Invoke(ToolTipIcon.Warning, "Couldn't execute printer application. Skipping printing..");
+
                             _logger.LogWarning("Couldn't execute printer application. Skipping printing..");
                             _logger.LogDebug($"'{ex}': {ex.Message}");
                         }
@@ -291,16 +375,16 @@ namespace LabelServiceConnector
             var ranges = mapping
                 .GetSection("WeightRanges")
                 .GetChildren()
-                .Select(w => new Tuple<int, int>(
-                    int.Parse(w["min"]),
-                    int.Parse(w["max"])
+                .Select(w => new Tuple<float, float>(
+                    float.Parse(w["min"]),
+                    float.Parse(w["max"])
                     ));
 
             //Select weight category by highest
             var range = ranges
-                .Where(r => weight >= r.Item1 && weight < r.Item2)
+                .Where(r => weight > r.Item1 && weight <= r.Item2)
                 .OrderByDescending(r => r.Item2)
-                .FirstOrDefault(new Tuple<int, int>(0, 100));
+                .FirstOrDefault(new Tuple<float, float>(0, 100));
 
             if (range != default)
             {

@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 
-namespace LabelServiceConnector.Models
+namespace LabelServiceConnector.Lib.Models
 {
     public class Job
     {

@@ -1,4 +1,4 @@
-﻿namespace LabelServiceConnector.Models
+﻿namespace LabelServiceConnector.Lib.Models
 {
     public enum JobStatus
     {

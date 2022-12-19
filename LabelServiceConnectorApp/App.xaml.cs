@@ -1,6 +1,8 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using LabelServiceConnector.Agents;
+using Microsoft.Extensions.Logging;
 using Serilog;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using Forms = System.Windows.Forms;
 
@@ -17,14 +19,32 @@ namespace LabelServiceConnector
 
         private readonly Forms.NotifyIcon _notifyIcon;
 
+        private readonly Archiver _archiverAgent;
+        
+        private readonly Loader _loaderAgent;
+
         public App()
         {
             _logger = ConfigureLogger().CreateLogger("");
             _cancellationToken = new CancellationToken();
             _notifyIcon = new Forms.NotifyIcon();
+
+            _archiverAgent = new Archiver(_logger, _cancellationToken, OnClientNotification);
+            _loaderAgent = new Loader(_logger, _cancellationToken, OnClientNotification);
         }
 
-        protected override void OnStartup(StartupEventArgs e)
+        private ILoggerFactory ConfigureLogger()
+        {
+            return LoggerFactory.Create(builder =>
+            {
+                var config = new LoggerConfiguration()
+                .ReadFrom.Configuration(Configuration.Logging);
+
+                builder.AddSerilog(config.CreateLogger(), dispose: true);
+            });
+        }
+
+        protected override async void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
 
@@ -32,8 +52,12 @@ namespace LabelServiceConnector
 
             _logger.LogInformation(ResourceAssembly.GetName().Name + " started");
 
-            new Loader(_logger, _cancellationToken).Run();
-            new Labeller(_logger, _cancellationToken);
+            new Labeller(_logger, _cancellationToken, OnClientNotification);
+
+            _loaderAgent.Start();
+
+            await _archiverAgent.UpdateDeliveredStatusKey();
+            _archiverAgent.Start();
         }
 
         protected override void OnExit(ExitEventArgs e)
@@ -43,17 +67,6 @@ namespace LabelServiceConnector
             _notifyIcon.Dispose();
 
             base.OnExit(e);
-        }
-
-        private ILoggerFactory ConfigureLogger()
-        {
-            return LoggerFactory.Create(builder =>
-            {
-                var config = new LoggerConfiguration()
-                .ReadFrom.Configuration(Configuration.Logging);
-                
-                builder.AddSerilog(config.CreateLogger(), dispose: true);
-            });
         }
     }
 }

@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using SendCloudApi.Net.Exceptions;
 using SendCloudApi.Net.Helpers;
 using SendCloudApi.Net.Resources;
+using static SendCloudApi.Net.Helpers.JsonHelper;
 
 namespace SendCloudApi.Net
 {
@@ -165,6 +166,7 @@ namespace SendCloudApi.Net
                     }
                     break;
             }
+
             if (response.IsSuccessStatusCode)
             {
                 var jsonResult = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -172,11 +174,14 @@ namespace SendCloudApi.Net
                 {
                     if (!string.IsNullOrWhiteSpace(returnObject))
                     {
-                        Dictionary<string, T> result = JsonHelper.DeserializeAsDictionary<T>(jsonResult, dateTimeFormat);
-                        return new ApiResponse<T>(response.StatusCode, result[returnObject], jsonResult);
+                        Page<T> page = DeserializeAsPage<T>(jsonResult.Replace($"\"{returnObject}\"", "\"data\""), dateTimeFormat);
+
+                        return new PagedResponse<T>(response.StatusCode, page.Data, jsonResult, page.NextPage, page.PreviousPage);
                     }
-                    return new ApiResponse<T>(response.StatusCode, JsonHelper.Deserialize<T>(jsonResult, dateTimeFormat), jsonResult);
+
+                    return new ApiResponse<T>(response.StatusCode, Deserialize<T>(jsonResult, dateTimeFormat), jsonResult);
                 }
+
                 return new ApiResponse<T>(response.StatusCode, default(T));
             }
             await HandleResponseError(response);
@@ -209,6 +214,8 @@ namespace SendCloudApi.Net
             }
             throw new SendCloudException(message);
         }
+
+
 
         //public async Task<string> Download(string url)
         //{

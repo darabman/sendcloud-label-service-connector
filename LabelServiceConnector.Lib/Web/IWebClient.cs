@@ -2,7 +2,7 @@
 using System.Threading.Tasks;
 using SendCloudApi.Net.Models;
 
-namespace LabelServiceConnector.WebApi
+namespace LabelServiceConnector.Lib.Web
 {
     public interface IWebClient
     {
@@ -13,5 +13,13 @@ namespace LabelServiceConnector.WebApi
         public Task<byte[]> DownloadLabel(string url);
 
         public Task<ShippingMethod[]> GetShippingMethods();
+
+        public Task<Status[]> GetParcelStatuses();
+
+        public Task<Parcel<Country>[]> GetParcels();
+
+        public Task<Parcel<Country>[]> GetParcels(int status);
+
+        public Task<Parcel<Country>[]> GetParcels(ICollection<int> ids);
     }
 }
