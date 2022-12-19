@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Text;
 using System.Windows.Forms;
+using static System.Net.WebRequestMethods;
 
 namespace LabelServiceConnector.Agents
 {
@@ -85,7 +86,7 @@ namespace LabelServiceConnector.Agents
                     _logger.LogWarning($"Unable to process '{file.Name}', skipping..");
                     _logger.LogDebug($"{ex}: {ex.Message}");
 
-                    _notificationMethod.Invoke(ToolTipIcon.Error, $"Unable to process '{file.Name}', skipping..");
+                    _notificationMethod.Invoke(ToolTipIcon.Warning, $"Unable to process '{file.Name}', skipping..");
 
                     Directory.CreateDirectory(dir + "/error/");
                     file.CopyTo(dir + "/error/" + file.Name, overwrite: true);

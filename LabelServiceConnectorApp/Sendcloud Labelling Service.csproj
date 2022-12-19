@@ -21,6 +21,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Remove="Resources\sendcloud-logo.png" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="Properties\Resources.Designer.cs">
       <DesignTime>True</DesignTime>
       <AutoGen>True</AutoGen>
@@ -53,6 +57,12 @@
   <ItemGroup>
     <ProjectReference Include="..\KeyEncryptorLib\KeyEncryptorLib.csproj" />
     <ProjectReference Include="..\LabelServiceConnector.Lib\LabelServiceConnector.Lib.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Resources\sendcloud-logo.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Resource>
   </ItemGroup>
 
   <ItemGroup>
